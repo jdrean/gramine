@@ -4,6 +4,8 @@ elif direct
     libpal = libpal_direct_dep
 elif sgx
     libpal = libpal_sgx_dep
+elif tyche
+    libpal = libpal_sgx_dep
 else
     error('need to link LibOS against a PAL library, but no PAL version is enabled')
 endif

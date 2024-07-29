@@ -1,0 +1,24 @@
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+/* (C) Copyright 2020 Intel Corporation
+ *                    Dmitrii Kuvaiskii <dmitrii.kuvaiskii@intel.com>
+ */
+
+#pragma once
+
+#ifndef __packed
+#define __packed __attribute__((packed))
+#endif
+
+#include <asm/ioctl.h>
+#include <linux/stddef.h>
+#include <linux/types.h>
+
+#include "@CONFIG_TYCHE_DRIVER_HEADER@"
+#include "backend.h"
+
+
+// TODO(aghosn) this might be useful to chose between the sdk backends.
+//#mesondefine CONFIG_SGX_DRIVER_UPSTREAM
+//#mesondefine CONFIG_SGX_DRIVER_OOT
+//
+//#mesondefine CONFIG_SGX_DRIVER_DEVICE

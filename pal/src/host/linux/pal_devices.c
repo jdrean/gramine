@@ -12,6 +12,7 @@
 
 #include "api.h"
 #include "ioctls.h"
+#include "log.h"
 #include "pal.h"
 #include "pal_error.h"
 #include "pal_flags_conv.h"
@@ -99,6 +100,7 @@ static int64_t dev_read(PAL_HANDLE handle, uint64_t offset, uint64_t size, void*
 
 static int64_t dev_write(PAL_HANDLE handle, uint64_t offset, uint64_t size, const void* buffer) {
     assert(handle->hdr.type == PAL_TYPE_DEV);
+    log_error("Writting %s\n", (char*) buffer);
 
     if (offset)
         return -PAL_ERROR_INVAL;

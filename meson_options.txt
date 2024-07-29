@@ -5,6 +5,8 @@ option('sgx', type: 'combo', choices: ['disabled', 'enabled'],
     description: 'Build and install gramine-sgx (aka Linux-SGX)')
 option('skeleton', type: 'combo', choices: ['disabled', 'enabled'],
     description: 'Build skeleton PAL')
+option('tyche', type: 'combo', choices: ['disabled', 'enabled'],
+    description: 'Build and install gramine-tyche (aka Linux-TYCHE)')
 
 option('libc', type: 'combo', choices: ['none', 'glibc', 'musl'],
     value: 'glibc', description: 'Choose (patched) libc that is to be built into runtime directory')
@@ -28,6 +30,14 @@ option('sgx_driver_include_path', type: 'string',
     description: 'Path to SGX driver headers (default value depends on sgx_driver)')
 option('sgx_driver_device', type: 'string',
     description: 'Path to "enclave" device in /dev (default value depends on sgx_driver)')
+
+option('tyche_backend', type: 'combo',
+  choices: ['tyche', 'kvm'],
+  description: 'Tyche backend, use the KVM API or the TYCHE one')
+option('tyche_drivers', type: 'string',
+    description: 'Path to the Tyche drivers (tyche and contalloc)')
+option('tyche_sdk', type: 'string',
+    description: 'Path to the Tyche sdk')
 
 option('syslibdir', type: 'string',
     description: 'Path to the system library directory')

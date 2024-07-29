@@ -24,6 +24,10 @@ static int file_open(PAL_HANDLE* handle, const char* type, const char* uri, enum
     PAL_HANDLE hdl = NULL;
     char* path = NULL;
 
+    if (uri != NULL) {
+      log_error("file open uri %s\n", uri);
+    }
+
     if (strcmp(type, URI_TYPE_FILE))
         return -PAL_ERROR_INVAL;
 

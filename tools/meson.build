@@ -56,6 +56,30 @@ if sgx
     )
 endif
 
+if tyche
+    subdir('tyche')
+
+    hostpalpath_linux_tyche = get_option('prefix') / pkglibdir / 'tyche'
+
+    custom_target('gramine-tyche',
+        command: [meson_render_script_prog,
+            '--mode', '755',
+            common_render_defines,
+            '-D', 'SGX=0',
+            '-D', 'HOST_PAL_PATH=@0@'.format(hostpalpath_linux_tyche),
+            '-D', 'LIBPAL_PATH=@0@'.format(hostpalpath_linux_tyche / 'libpal.so'),
+            '-D', 'PAL_CMD=@0@'.format(get_option('prefix') / pkglibdir / 'tyche' / 'loader'),
+            '-D', 'CONFIG_SGX_DRIVER=',
+            '@INPUT@',
+            '@OUTPUT@',
+        ],
+        input: 'gramine.in',
+        output: 'gramine-tyche',
+        install: true,
+        install_dir: get_option('bindir'),
+    )
+endif
+
 executable('gramine-argv-serializer',
     'argv_serializer.c',
     install: true)

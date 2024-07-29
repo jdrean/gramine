@@ -365,6 +365,7 @@ out_fail:
  * At this point the manifest is assumed to be already parsed, because some PAL loaders use manifest
  * configuration for early initialization.
  */
+//TODO(aghosn) the main of linux
 noreturn void pal_main(uint64_t instance_id,       /* current instance id */
                        PAL_HANDLE parent_process,  /* parent process if it's a child */
                        PAL_HANDLE first_thread,    /* first thread handle */
@@ -603,8 +604,11 @@ noreturn void pal_main(uint64_t instance_id,       /* current instance id */
 
     pal_disable_early_memory_bookkeeping();
 
+    log_error("Before start execution");
+
     /* Now we will start the execution */
     start_execution(arguments, final_environments);
+    log_error("After start execution");
 
 out_fail:
     /* We wish we will never reached here */

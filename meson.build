@@ -28,6 +28,8 @@ elif meson.get_compiler('c').has_argument('-std=c2x')
   add_project_arguments('-std=c2x', language: 'c')
 endif
 
+fs = import('fs')
+
 # we need this subdir() early, because we need scripts defined there for setting up global vars
 subdir('scripts')
 
@@ -42,6 +44,7 @@ endif
 direct = get_option('direct') == 'enabled'
 sgx = get_option('sgx') == 'enabled'
 skeleton = get_option('skeleton') == 'enabled'
+tyche = get_option('tyche') == 'enabled'
 
 dcap = get_option('dcap') == 'enabled'
 ubsan = get_option('ubsan') == 'enabled'
@@ -161,6 +164,67 @@ if sgx
     conf_sgx.set('CONFIG_SGX_DRIVER_INCLUDE', sgx_driver_include)
 endif
 
+if tyche
+  conf_tyche = configuration_data()
+  tyche_drivers = get_option('tyche_drivers')
+  tyche_driver_path = tyche_drivers / 'tyche'
+  tyche_contalloc_path = tyche_drivers / 'contalloc'
+  tyche_contalloc_headers = tyche_contalloc_path / 'include'
+  tyche_sdk_path = get_option('tyche_sdk')
+  if not fs.is_absolute(tyche_driver_path)
+    error('Provide an absolute path for the tyche driver in -Dtyche_driver_path.')
+  endif
+  if not fs.is_absolute(tyche_sdk_path)
+    error('The tyche_sdk must be an absolute path')
+  endif
+
+  # Driver libraries.
+  tyche_driver_headers = tyche_driver_path / 'include/'
+  tyche_driver_api = tyche_driver_path / 'include/tyche_driver.h'
+  tyche_libraries = tyche_driver_path / 'libraries'
+  tyche_driver_capa_headers = tyche_libraries / 'capabilities/include/'
+  tyche_driver_common_headers = tyche_libraries / 'common/include'
+  tyche_driver_dll_headers = tyche_libraries / 'dll/include'
+
+  # Backend libraries.
+  tyche_backend = get_option('tyche_backend')
+  tyche_sdk_include = tyche_sdk_path / 'include'
+  if tyche_backend == 'kvm'
+    tyche_backend_c = tyche_sdk_path / 'loader/backends/back_kvm.c'
+    conf_tyche.set('RUN_WITH_KVM', '-DRUN_WITH_KVM=1')
+  elif tyche_backend == 'tyche'
+    tyche_backend_c = tyche_sdk_path / 'loader/backends/back_tyche.c'
+    conf_tyche.set('RUN_WITH_KVM', '-DRUN_WITH_TYCHE=1')
+  else
+    error('Unknown tyche_backend value')
+  endif
+
+  paths = [
+    tyche_driver_headers, tyche_driver_api, tyche_libraries,
+    tyche_driver_capa_headers, tyche_driver_capa_headers,
+    tyche_driver_common_headers, tyche_driver_dll_headers,
+    tyche_backend_c, tyche_sdk_include, tyche_contalloc_path,
+    tyche_contalloc_headers,
+  ]
+
+  foreach f: paths
+    if not fs.exists(f)
+      error('Could not find @0@'.format(f))
+    endif
+  endforeach
+
+  # Put the computed paths inside a configuration data.
+  # This is used by the meson.build in linux-tyche.
+  conf_tyche.set('CONFIG_TYCHE_DRIVER_HEADER', tyche_driver_api)
+  conf_tyche.set('CONFIG_TYCHE_CONTALLOC_INCLUDE', tyche_contalloc_headers)
+  conf_tyche.set('CONFIG_TYCHE_DRIVER_INCLUDE', tyche_driver_headers)
+  conf_tyche.set('CONFIG_TYCHE_DRIVER_CAPA_INCLUDE', tyche_driver_capa_headers)
+  conf_tyche.set('CONFIG_TYCHE_DRIVER_COMMON_INCLUDE', tyche_driver_common_headers)
+  conf_tyche.set('CONFIG_TYCHE_DRIVER_DLL_INCLUDE', tyche_driver_dll_headers)
+  conf_tyche.set('CONFIG_TYCHE_SDK_INCLUDE', tyche_sdk_include)
+  conf_tyche.set('FILE_TYCHE_BACKEND_C', tyche_backend_c)
+endif
+
 gen_symbol_map_cmd = [
     find_program('nm'),
     '--numeric-sort', '--defined-only', '--print-size', '--line-numbers',
@@ -268,6 +332,38 @@ if sgx
     if dcap
         sgx_dcap_quoteverify_dep = cc.find_library('sgx_dcap_quoteverify')
     endif
+
+    vtune_dep = []
+    dl_dep = []
+
+    if vtune
+        dl_dep = cc.find_library('dl', required: true)
+        vtune_dep = declare_dependency(
+            dependencies: [
+                cc.find_library('ittnotify', dirs: vtune_sdk_path / 'lib64', required: true),
+                dl_dep,
+            ],
+            include_directories: include_directories(vtune_sdk_path / 'include'),
+        )
+    endif
+endif
+
+if tyche
+    # XXX: do not call subproject() from under "if sgx" conditional, because it
+    # breaks `meson dist`: `-Dsgx` checks for presence of sgx.h header and we
+    # don't want to bother with finding the header just to create a tarball
+    # TODO: this ^ probably can be revised when all distros will have the header
+    # in <asm/sgx.h> so we won't have to mess with the paths anymore
+
+    protoc_c_prog = find_program('protoc-c')
+
+    threads_dep = dependency('threads')
+
+    libcurl_dep = curl_proj.get_variable('curl_minimal_dep')
+
+    cjson_dep = cjson_proj.get_variable('cjson_dep')
+
+    protobuf_dep = dependency('libprotobuf-c')
 
     vtune_dep = []
     dl_dep = []
