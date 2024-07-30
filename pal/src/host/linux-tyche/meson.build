@@ -34,6 +34,10 @@ cflags_pal_sgx = [
     # Some of the code uses `alignof` on expressions, which is a GNU extension. Silence Clang - it
     # complains but does support it.
     '-Wno-gnu-alignof-expression',
+    # Tyche specific configuration
+    conf_tyche.get('RUN_WITH_KVM'),
+    '-DTYCHE_NO_ELF=1',
+    '-DTYCHE_USER_SPACE=2',
 ]
 
 pal_sgx_generated_offsets_print = executable('pal-sgx-generated-offsets-print',
@@ -219,20 +223,20 @@ if debug
         install_dir: pkglibdir / 'tyche',
     )
 
-    shared_library('sgx_gdb',
-        'gdb_integration/sgx_gdb.c',
+    #shared_library('sgx_gdb',
+    #    'gdb_integration/sgx_gdb.c',
 
-        # just `sgx_gdb.so`, without `lib`
-        name_prefix: '',
+    #    # just `sgx_gdb.so`, without `lib`
+    #    name_prefix: '',
 
-        c_args: [
-            # optimize even in a debug build
-            '-O3',
-        ],
+    #    c_args: [
+    #        # optimize even in a debug build
+    #        '-O3',
+    #    ],
 
-        install: true,
-        install_dir: pkglibdir / 'sgx/gdb_integration',
-    )
+    #    install: true,
+    #    install_dir: pkglibdir / 'sgx/gdb_integration',
+    #)
 
     install_data(
         'gdb_integration/gramine_sgx.gdb',

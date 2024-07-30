@@ -221,6 +221,7 @@ static int initialize_enclave(struct pal_enclave* enclave, const char* manifest_
         return -ENOMEM;
     }
 
+    log_error("The enclave libpal uri %s", enclave->libpal_uri);
     enclave_image = DO_SYSCALL(open, enclave->libpal_uri + URI_PREFIX_FILE_LEN,
                                O_RDONLY | O_CLOEXEC, 0);
     if (enclave_image < 0) {
@@ -307,6 +308,7 @@ static int initialize_enclave(struct pal_enclave* enclave, const char* manifest_
     memset(&enclave_secs, 0, sizeof(enclave_secs));
     enclave_secs.base = enclave->baseaddr;
     enclave_secs.size = enclave->size;
+    log_error("Enclave baseaddr %lx, size %lx", enclave->baseaddr, enclave->size);
     ret = create_enclave(&enclave_secs, &enclave_token);
     if (ret < 0) {
         log_error("Creating enclave failed: %s", unix_strerror(ret));

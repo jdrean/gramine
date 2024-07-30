@@ -1,3 +1,4 @@
+#include <asm-generic/errno-base.h>
 #include <asm/errno.h>
 
 #include "hex.h"
@@ -155,6 +156,7 @@ bool is_wrfsbase_supported(void) {
 int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token) {
     assert(secs->size && IS_POWER_OF_2(secs->size));
     assert(IS_ALIGNED(secs->base, secs->size));
+    int ret = 0;
 
     secs->ssa_frame_size = SSA_FRAME_SIZE / g_page_size; /* SECS expects SSA frame size in pages */
     secs->misc_select    = token->masked_misc_select_le;
@@ -178,9 +180,28 @@ int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token) {
     }
 #endif
 
-    uint64_t addr = DO_SYSCALL(mmap, request_mmap_addr, request_mmap_size,
+    /* Initialize the domain structure */
+    memset(&(secs->domain), 0, sizeof(tyche_domain_t));
+    dll_init_list(&(secs->domain.shared_regions));
+    dll_init_list(&(secs->domain.mmaps));
+    dll_init_list(&(secs->domain.pipes));
+
+    /* Create the domain with the selected backend.*/
+    if (backend_td_create(&secs->domain) != SUCCESS) {
+      log_error("Unable to create the enclave : %s", unix_strerror(ENODEV));
+      return -ENODEV;
+    }
+
+    /* Allocate the required memory (TODO: figure out the page tables)*/
+    if (backend_td_mmap(&(secs->domain), request_mmap_addr, request_mmap_size,
+          PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED_NOREPLACE | MAP_SHARED) != SUCCESS) {
+      log_error("Unable to allocate the memory.");
+      return -ENOMEM;
+    }
+    uint64_t addr = (uint64_t) secs->domain.mmaps.tail->virtoffset; 
+      /*DO_SYSCALL(mmap, request_mmap_addr, request_mmap_size,
                                PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED_NOREPLACE | MAP_SHARED,
-                               g_isgx_device, 0);
+                               g_isgx_device, 0);*/
     if (IS_PTR_ERR(addr)) {
         int ret = PTR_TO_ERR(addr);
         if (ret == -EPERM) {
@@ -193,7 +214,7 @@ int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token) {
     }
     assert(addr == request_mmap_addr);
 
-    struct sgx_enclave_create param = {
+    /*struct sgx_enclave_create param = {
         .src = (uint64_t)secs,
     };
     int ret = DO_SYSCALL(ioctl, g_isgx_device, SGX_IOC_ENCLAVE_CREATE, &param);
@@ -207,7 +228,7 @@ int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token) {
             log_error("Enclave creation IOCTL failed: %s", unix_strerror(ret));
         }
         return ret;
-    }
+    }*/
 
     secs->attributes.flags |= SGX_FLAGS_INITIALIZED;
 
@@ -300,38 +321,7 @@ int add_pages_to_enclave(sgx_arch_secs_t* secs, void* addr, void* user_addr, uns
         log_debug("Adding pages to enclave: %p-%p [%s:%s] (%s)%s", addr, addr + size, t, p,
                   comment, m);
 
-#ifdef CONFIG_SGX_DRIVER_OOT
-    /* legacy out-of-tree driver only supports adding one page at a time */
-    struct sgx_enclave_add_page param = {
-        .addr    = (uint64_t)addr,
-        .src     = (uint64_t)(user_addr ?: g_zero_pages),
-        .secinfo = (uint64_t)&secinfo,
-        .mrmask  = skip_eextend ? 0 : (uint16_t)-1,
-    };
 
-    uint64_t added_size = 0;
-    while (added_size < size) {
-        ret = DO_SYSCALL(ioctl, g_isgx_device, SGX_IOC_ENCLAVE_ADD_PAGE, &param);
-        if (ret < 0) {
-            if (ret == -EINTR)
-                continue;
-            log_error("Enclave add-pages IOCTL failed: %s", unix_strerror(ret));
-            return ret;
-        }
-
-        param.addr += g_page_size;
-        if (param.src != (uint64_t)g_zero_pages)
-            param.src += g_page_size;
-        added_size += g_page_size;
-    }
-
-    /* need to change permissions for EADDed pages since the initial mmap was with PROT_NONE */
-    ret = DO_SYSCALL(mprotect, addr, size, prot);
-    if (ret < 0) {
-        log_error("Changing protections of EADDed pages failed: %s", unix_strerror(ret));
-        return ret;
-    }
-#else
     if (!user_addr && g_zero_pages_size < size) {
         /* not enough contigious zero pages to back up enclave pages, allocate more */
         /* TODO: this logic can be removed if we introduce a size cap in ENCLAVE_ADD_PAGES ioctl */
@@ -402,7 +392,6 @@ int add_pages_to_enclave(sgx_arch_secs_t* secs, void* addr, void* user_addr, uns
         log_error("Cannot map enclave pages: %s", unix_strerror(ret));
         return ret;
     }
-#endif /* CONFIG_SGX_DRIVER_OOT */
 
     return 0;
 }

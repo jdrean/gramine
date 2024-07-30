@@ -57,7 +57,7 @@ if sgx
 endif
 
 if tyche
-    subdir('tyche')
+  #subdir('tyche')
 
     hostpalpath_linux_tyche = get_option('prefix') / pkglibdir / 'tyche'
 
