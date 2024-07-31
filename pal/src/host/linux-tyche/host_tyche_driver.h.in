@@ -15,6 +15,7 @@
 
 #include "@CONFIG_TYCHE_DRIVER_HEADER@"
 #include "backend.h"
+#include "tyche_api.h"
 
 
 // TODO(aghosn) this might be useful to chose between the sdk backends.

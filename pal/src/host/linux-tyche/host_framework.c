@@ -229,6 +229,38 @@ int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token) {
       assert(addr == vaddr);
     }
 
+    /* Initialize the cores and traps.
+     * For the moment set default values where we allow everything. */
+    secs->domain.traps = ALL_TRAPS;
+    secs->domain.core_map = ALL_CORES;
+    secs->domain.perms = DEFAULT_PERM;
+    /* Set the traps. */
+    if (backend_td_config(
+          &(secs->domain), TYCHE_CONFIG_TRAPS, secs->domain.traps) != SUCCESS) {
+      log_error("Unable to set the traps for the domain %d", secs->domain.handle);
+      goto failure;
+    }
+    /* Set the cores. */
+    if (backend_td_config(
+          &(secs->domain), TYCHE_CONFIG_CORES, secs->domain.core_map) != SUCCESS) {
+      log_error("Unable to set the cores for the domain %d", secs->domain.handle);
+      goto failure;
+    }
+    /* Set the domain permissions. */
+    if (backend_td_config(
+          &(secs->domain), TYCHE_CONFIG_PERMISSIONS, secs->domain.perms) != SUCCESS) {
+      log_error("Unable to set the permission on domain %d", secs->domain.handle);
+      goto failure;
+    }
+
+    /* Do the default configuration for mgmt. */
+    for (unsigned int p = TYCHE_CONFIG_R16; p < TYCHE_NR_CONFIGS; p++) {
+      if (backend_td_config(&(secs->domain), p, ~((usize) 0)) != SUCCESS) {
+        log_error("Unable to set the permission %u", p);
+        goto failure;
+      }
+    }
+
     secs->attributes.flags |= SGX_FLAGS_INITIALIZED;
 
     log_debug("Enclave created:");
@@ -266,6 +298,8 @@ int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token) {
     }
 
     return 0;
+failure:
+    return -EINVAL;
 }
 
 int add_pages_to_enclave(sgx_arch_secs_t* secs, void* addr, void* user_addr, unsigned long size,
@@ -308,7 +342,7 @@ int add_pages_to_enclave(sgx_arch_secs_t* secs, void* addr, void* user_addr, uns
     // anything else here. We probably need to protect stack differently
     // and we are still missing the shared memory probably.
     // TODO(aghosn): eventually replace the memory type and all the sgx-related stuff.
-    log_error("Success mapping %p with size %lx and access %s", addr, size, p);
+    log_error("Success mapping %p with size %lx and access %s from source %p", addr, size, p, user_addr);
     return 0;
 }
 
