@@ -257,33 +257,6 @@ static int initialize_enclave(struct pal_enclave* enclave, const char* manifest_
     }
 #endif
 
-    //TODO(aghosn) signature related stuff. Disable for now.
-    /*
-    sig_path = alloc_concat(g_pal_enclave.application_path, -1, ".sig", -1);
-    if (!sig_path) {
-        ret = -ENOMEM;
-        goto out;
-    }
-
-    sigfile_fd = DO_SYSCALL(open, sig_path, O_RDONLY | O_CLOEXEC, 0);
-    if (sigfile_fd < 0) {
-        log_error("Cannot open sigstruct file %s", sig_path);
-        ret = -EINVAL;
-        goto out;
-    }
-
-    ret = read_enclave_sigstruct(sigfile_fd, &enclave_sigstruct);
-    if (ret < 0) {
-        log_error("Reading enclave sigstruct failed: %s", unix_strerror(ret));
-        goto out;
-    }
-
-    ret = get_enclave_token(&enclave_token, &enclave_sigstruct);
-    if (ret < 0) {
-        log_error("Reading enclave token failed: %s", unix_strerror(ret));
-        goto out;
-    }*/
-
 #ifdef DEBUG
     if (enclave->profile_enable) {
         if (!(enclave_token.body.attributes.flags & SGX_FLAGS_DEBUG)) {
