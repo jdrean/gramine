@@ -154,7 +154,7 @@ typedef struct {
     sgx_config_svn_t config_svn;
     uint8_t reserved4[3834];
     // TODO(aghosn): added by me for now.
-    tyche_domain_t domain;
+    tyche_domain_t* domain;
 } sgx_arch_secs_t;
 
 typedef struct {

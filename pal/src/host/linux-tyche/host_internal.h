@@ -9,6 +9,7 @@
 
 #include "api.h"
 #include "host_syscall.h"
+#include "host_tyche_driver.h"
 #include "pal_linux.h"
 #include "sgx_arch.h"
 #include "toml.h"
@@ -33,7 +34,7 @@ extern bool g_vtune_profile_enabled;
 
 struct pal_enclave {
     /* attributes */
-    bool is_first_process; // Initial process in Gramine instance is special.
+    bool is_first_process;  // Initial process in Gramine instance is special.
 
     char* application_path;
     char* raw_manifest_data;
@@ -53,6 +54,8 @@ struct pal_enclave {
     bool profile_with_stack;
     int profile_frequency;
 #endif
+    // TODO(aghosn): added by me for now.
+    tyche_domain_t domain;
 };
 
 extern struct pal_enclave g_pal_enclave;
@@ -64,7 +67,6 @@ extern char g_profile_filename[128];
 
 void* realloc(void* ptr, size_t new_size);
 
-int open_sgx_driver(void);
 bool is_wrfsbase_supported(void);
 
 int read_enclave_token(int token_file, sgx_arch_token_t* out_token);
@@ -140,10 +142,10 @@ int set_tcs_debug_flag_if_debugging(void* tcs_addrs[], size_t count);
  * possible to achieve higher than 250.
  */
 #define SGX_PROFILE_DEFAULT_FREQUENCY 50
-#define SGX_PROFILE_MAX_FREQUENCY 250
+#define SGX_PROFILE_MAX_FREQUENCY     250
 
 enum {
-    SGX_PROFILE_MODE_AEX = 1,
+    SGX_PROFILE_MODE_AEX         = 1,
     SGX_PROFILE_MODE_OCALL_INNER = 2,
     SGX_PROFILE_MODE_OCALL_OUTER = 3,
 };
@@ -192,5 +194,5 @@ int pd_event_sample_simple(struct perf_data* pd, uint64_t ip, uint32_t pid, uint
                            uint64_t period);
 
 /* Write PERF_RECORD_SAMPLE (with stack sample, at most PD_STACK_SIZE bytes) */
-int pd_event_sample_stack(struct perf_data* pd,  uint64_t ip, uint32_t pid, uint32_t tid,
+int pd_event_sample_stack(struct perf_data* pd, uint64_t ip, uint32_t pid, uint32_t tid,
                           uint64_t period, sgx_pal_gpr_t* gpr, void* stack, size_t stack_size);

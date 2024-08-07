@@ -2,6 +2,7 @@
 #include <asm-generic/mman-common.h>
 #include <asm/errno.h>
 #include <errno.h>
+#include <stdint.h>
 
 #include "backend.h"
 #include "hex.h"
@@ -20,29 +21,6 @@ static int g_isgx_device = -1;
 
 static void*  g_zero_pages      = NULL;
 static size_t g_zero_pages_size = 0;
-
-int open_sgx_driver(void) {
-    const char* paths_to_try[] = {
-      "/dev/tyche",
-      "/dev/kvm",
-    };
-    int ret;
-    for (size_t i = 0; i < ARRAY_SIZE(paths_to_try); i++) {
-        ret = DO_SYSCALL(open, paths_to_try[i], O_RDWR | O_CLOEXEC, 0);
-        if (ret == -EACCES) {
-            log_error("Cannot open %s (permission denied). This may happen because the current "
-                      "user has insufficient permissions to this device.", paths_to_try[i]);
-            return ret;
-        }
-        if (ret >= 0) {
-            g_isgx_device = ret;
-            return 0;
-        }
-    }
-    log_error("Cannot open SGX driver device. Please make sure you're using an up-to-date kernel "
-              "or the standalone Intel SGX kernel module is loaded.");
-    return ret;
-}
 
 int read_enclave_token(int token_file, sgx_arch_token_t* out_token) {
     struct stat stat;
@@ -160,9 +138,34 @@ bool is_wrfsbase_supported(void) {
     return true;
 }
 
+static uint64_t compute_pages(uint64_t base, uint64_t size)
+{
+  uint64_t end = base + size;
+  level_t levels[3] = {PT_PML4, PT_PGD, PT_PMD};
+  unsigned long pages[3] = {0, 0, 0};
+
+  /* Go through all levels using the higher level to compute nb pages*/
+  for (int i = 0; i < 3; i++) {
+    index_t s_idx = x86_64_get_index(base, levels[i], &x86_64_profile);
+    index_t e_idx =  x86_64_get_index(end, levels[i], &x86_64_profile);
+    if (i == 0) {
+      pages[i] = e_idx - s_idx + 1;
+      continue;
+    }
+    /* the formula is simple: how many entries times 512 and substract partial
+     * pages for the first and last index.*/
+    pages[i] = (pages[i-1] * ((unsigned long) x86_64_profile.nb_entries))
+      - ((unsigned long) s_idx)
+      - (((unsigned long) x86_64_profile.nb_entries) - ((unsigned long) e_idx)) + 1;
+  }
+  /* 1 for root, then how many entries in PML4, + how many entries in PGD etc.*/
+  return 1 + pages[0] + pages[1] + pages[2];
+}
+
 int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token) {
     assert(secs->size && IS_POWER_OF_2(secs->size));
     assert(IS_ALIGNED(secs->base, secs->size));
+    assert(secs->domain != NULL);
     int ret = 0;
 
     secs->ssa_frame_size = SSA_FRAME_SIZE / g_page_size; /* SECS expects SSA frame size in pages */
@@ -188,31 +191,35 @@ int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token) {
 #endif
 
     /* Initialize the domain structure */
-    memset(&(secs->domain), 0, sizeof(tyche_domain_t));
-    dll_init_list(&(secs->domain.shared_regions));
-    dll_init_list(&(secs->domain.mmaps));
-    dll_init_list(&(secs->domain.pipes));
+    dll_init_list(&(secs->domain->shared_regions));
+    dll_init_list(&(secs->domain->mmaps));
+    dll_init_list(&(secs->domain->pipes));
 
     /* Create the domain with the selected backend.*/
-    if (backend_td_create(&secs->domain) != SUCCESS) {
+    if (backend_td_create(secs->domain) != SUCCESS) {
       log_error("Unable to create the enclave : %s", unix_strerror(ENODEV));
       return -ENODEV;
+    } else {
+      log_error("CREATING A DOMAIN\n");
     }
 
     uint64_t end = request_mmap_addr + request_mmap_size;
+    /* computing the number of pages required for the page tables. */
+    unsigned long pts_pages_size = compute_pages(request_mmap_addr, request_mmap_size) * PAGE_SIZE;
+    /* Let the address space be filed by the actual regions before doing our mmap.*/
     for (uint64_t vaddr = request_mmap_addr;
         vaddr < end;
         vaddr += MAX_SLOT_SIZE) {
       uint64_t size = ((vaddr + MAX_SLOT_SIZE) < (end))? MAX_SLOT_SIZE : end - vaddr;
 
       /* Allocate the required memory (TODO: figure out the page tables)*/
-      if (backend_td_mmap(&(secs->domain), (void*) vaddr, size,
+      if (backend_td_mmap(secs->domain, (void*) vaddr, size,
             PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED_NOREPLACE | MAP_SHARED) != SUCCESS) {
         log_error("Unable to allocate the memory : %s", unix_strerror(errno));
         return -errno;
       }
 
-      uint64_t addr = (uint64_t) secs->domain.mmaps.tail->virtoffset;
+      uint64_t addr = (uint64_t) secs->domain->mmaps.tail->virtoffset;
       /*DO_SYSCALL(mmap, request_mmap_addr, request_mmap_size,
                                PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED_NOREPLACE | MAP_SHARED,
                                g_isgx_device, 0);*/
@@ -228,34 +235,55 @@ int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token) {
       }
       assert(addr == vaddr);
     }
+    /* now allocate the memory for the domain's page tables. */
+    if (backend_td_mmap(secs->domain, (void*) end, pts_pages_size ,
+          PROT_READ | PROT_WRITE, MAP_FIXED_NOREPLACE | MAP_SHARED) != SUCCESS) {
+      log_error("Unable to mmap the page table memory region.");
+      return -errno;
+    }
+    void* pts = (void*) secs->domain->mmaps.tail->virtoffset;
+    memset(pts, 0, pts_pages_size);
+
+    /* add the page tables to the domain.*/
+    if (backend_td_register_region(secs->domain,
+        secs->domain->mmaps.tail->virtoffset, secs->domain->mmaps.tail->size,
+        MEM_READ | MEM_WRITE | MEM_SUPER, CONFIDENTIAL) != SUCCESS) {
+      log_error("Unable to register the page table mmaps.");
+      return -errno;
+    }
 
     /* Initialize the cores and traps.
      * For the moment set default values where we allow everything. */
-    secs->domain.traps = ALL_TRAPS;
-    secs->domain.core_map = ALL_CORES;
-    secs->domain.perms = DEFAULT_PERM;
+    secs->domain->traps = ALL_TRAPS;
+    secs->domain->core_map = 1;
+    secs->domain->perms = DEFAULT_PERM;
+    secs->domain->config.page_table_root = secs->domain->mmaps.tail->physoffset;
+
+    /* initialize the pt_mapper */
+    init_pt_mapper(secs->domain);
+
     /* Set the traps. */
     if (backend_td_config(
-          &(secs->domain), TYCHE_CONFIG_TRAPS, secs->domain.traps) != SUCCESS) {
-      log_error("Unable to set the traps for the domain %d", secs->domain.handle);
+          secs->domain, TYCHE_CONFIG_TRAPS, secs->domain->traps) != SUCCESS) {
+      log_error("Unable to set the traps for the domain %d", secs->domain->handle);
       goto failure;
     }
     /* Set the cores. */
     if (backend_td_config(
-          &(secs->domain), TYCHE_CONFIG_CORES, secs->domain.core_map) != SUCCESS) {
-      log_error("Unable to set the cores for the domain %d", secs->domain.handle);
+          secs->domain, TYCHE_CONFIG_CORES, secs->domain->core_map) != SUCCESS) {
+      log_error("Unable to set the cores for the domain %d", secs->domain->handle);
       goto failure;
     }
     /* Set the domain permissions. */
     if (backend_td_config(
-          &(secs->domain), TYCHE_CONFIG_PERMISSIONS, secs->domain.perms) != SUCCESS) {
-      log_error("Unable to set the permission on domain %d", secs->domain.handle);
+          secs->domain, TYCHE_CONFIG_PERMISSIONS, secs->domain->perms) != SUCCESS) {
+      log_error("Unable to set the permission on domain %d", secs->domain->handle);
       goto failure;
     }
 
     /* Do the default configuration for mgmt. */
     for (unsigned int p = TYCHE_CONFIG_R16; p < TYCHE_NR_CONFIGS; p++) {
-      if (backend_td_config(&(secs->domain), p, ~((usize) 0)) != SUCCESS) {
+      if (backend_td_config(secs->domain, p, ~((usize) 0)) != SUCCESS) {
         log_error("Unable to set the permission %u", p);
         goto failure;
       }
@@ -309,6 +337,7 @@ int add_pages_to_enclave(sgx_arch_secs_t* secs, void* addr, void* user_addr, uns
     int ret;
     segment_type_t tpe = CONFIDENTIAL;
     memory_access_right_t access = MEM_SUPER;
+    uint64_t pt_flags = 0;
     char p[4] = "---";
     if (type == SGX_PAGE_TYPE_REG) {
         if (prot & PROT_READ)
@@ -326,23 +355,37 @@ int add_pages_to_enclave(sgx_arch_secs_t* secs, void* addr, void* user_addr, uns
       memcpy(addr, user_addr, size);
     }
     /* Compute the access rights. */
-    if (prot & PROT_READ)
+    if (prot & PROT_READ) {
       access |= MEM_READ;
-    if (prot & PROT_WRITE)
+      pt_flags |= PT_PP;
+    }
+    if (prot & PROT_WRITE) {
       access |= MEM_WRITE;
-    if (prot & PROT_EXEC)
+      pt_flags |= PT_RW;
+    }
+    if (prot & PROT_EXEC) {
       access |= MEM_EXEC;
+    } else {
+      pt_flags |= PT_NX;
+    }
     /* Register the memory region. */
-    if (backend_td_register_region(&(secs->domain), (usize) addr, size, access, tpe) != SUCCESS) {
+    if (backend_td_register_region(secs->domain, (usize) addr, size, access, tpe) != SUCCESS) {
       log_error("Unable to register %p with size %lx and access %s", addr, size, p);
       return -EINVAL;
     }
+
+    /* map the region in the page tables.*/
+    if (pt_map_region(addr, size, pt_flags) != SUCCESS) {
+      log_error("Error mapping %p -> %p in page tables", addr, addr + size);
+      return -EINVAL;
+    }
+
     // Stop here for now.
     // TODO(aghosn): check in the original sgx implementation if we need to do
     // anything else here. We probably need to protect stack differently
     // and we are still missing the shared memory probably.
     // TODO(aghosn): eventually replace the memory type and all the sgx-related stuff.
-    log_error("Success mapping %p with size %lx and access %s from source %p", addr, size, p, user_addr);
+    //log_error("Success mapping %p with size %lx and access %s from source %p", addr, size, p, user_addr);
     return 0;
 }
 
@@ -464,75 +507,11 @@ int edmm_supported_by_driver(bool* out_supported) {
 
 int init_enclave(sgx_arch_secs_t* secs, sgx_sigstruct_t* sigstruct, sgx_arch_token_t* token) {
   //TODO(aghosn) this is the commit.
-  //We need to do everything here to make sure the commit is okay.
-  //Probably create the vcpus etc.
-  log_error("Inside init enclave, todo");
-  assert(0);
-
-//#ifndef CONFIG_SGX_DRIVER_OOT
-//    __UNUSED(token);
-//#endif
-//    unsigned long enclave_valid_addr = secs->base + secs->size - g_page_size;
-//
-//    char hex[sizeof(sigstruct->enclave_hash.m) * 2 + 1];
-//    log_debug("Enclave initializing:");
-//    log_debug("    enclave id:   0x%016lx", enclave_valid_addr);
-//    log_debug("    mr_enclave:   %s", bytes2hex(sigstruct->enclave_hash.m,
-//                                                sizeof(sigstruct->enclave_hash.m),
-//                                                hex, sizeof(hex)));
-//    log_debug("    isv_prod_id:  %d", sigstruct->isv_prod_id);
-//    log_debug("    isv_svn:      %d", sigstruct->isv_svn);
-//
-//    struct sgx_enclave_init param = {
-//#ifdef CONFIG_SGX_DRIVER_OOT
-//        .addr = enclave_valid_addr,
-//#endif
-//        .sigstruct = (uint64_t)sigstruct,
-//#ifdef CONFIG_SGX_DRIVER_OOT
-//        .einittoken = (uint64_t)token,
-//#endif
-//    };
-//    int ret = DO_SYSCALL(ioctl, g_isgx_device, SGX_IOC_ENCLAVE_INIT, &param);
-//    if (ret < 0) {
-//        log_error("Enclave initialization IOCTL failed: %s", unix_strerror(ret));
-//        return ret;
-//    }
-//
-//    if (ret) {
-//        const char* error;
-//        switch (ret) {
-//            case SGX_INVALID_SIG_STRUCT:
-//                error = "Invalid SIGSTRUCT";
-//                break;
-//            case SGX_INVALID_ATTRIBUTE:
-//                error = "Invalid enclave attribute";
-//                break;
-//            case SGX_INVALID_MEASUREMENT:
-//                error = "Invalid measurement";
-//                break;
-//            case SGX_INVALID_SIGNATURE:
-//                error = "Invalid signature";
-//                break;
-//            case SGX_INVALID_EINITTOKEN:
-//                error = "Invalid EINIT token";
-//                break;
-//            case SGX_INVALID_CPUSVN:
-//                error = "Invalid CPU SVN";
-//                break;
-//            default:
-//                error = "Unknown reason";
-//                break;
-//        }
-//        log_error("Enclave initialization IOCTL failed: %s", error);
-//        return -EPERM;
-//    }
-//
-//    /* all enclave pages were EADDed, don't need zero pages anymore */
-//    ret = DO_SYSCALL(munmap, g_zero_pages, g_zero_pages_size);
-//    if (ret < 0) {
-//        log_error("Cannot unmap zero pages: %s", unix_strerror(ret));
-//        return ret;
-//    }
-//
-    return 0;
+  // we're still missing shared memory regions.
+  assert(secs->domain != NULL);
+  if (backend_td_commit(secs->domain) != SUCCESS) {
+    log_error("Error comitting domain.");
+    return -EINVAL;
+  }
+  return 0;
 }

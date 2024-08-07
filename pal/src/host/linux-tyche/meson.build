@@ -10,6 +10,13 @@ pal_sgx_inc = [
     ),
 ]
 
+# Page table includes.
+tyche_pts_include = conf_tyche.get('CONFIG_TYCHE_PTS') / 'include'
+tyche_pts_src = [
+  conf_tyche.get('CONFIG_TYCHE_PTS') / 'src/lib.c',
+  conf_tyche.get('CONFIG_TYCHE_PTS') / 'src/x86_64_pt.c',
+]
+
 tyche_inc = [
     includes_pal_common,
     pal_sgx_inc,
@@ -22,6 +29,7 @@ tyche_inc = [
         conf_tyche.get('CONFIG_TYCHE_DRIVER_COMMON_INCLUDE'),
         conf_tyche.get('CONFIG_TYCHE_DRIVER_DLL_INCLUDE'),
         conf_tyche.get('CONFIG_TYCHE_SDK_INCLUDE'),
+        tyche_pts_include,
     ),
 ]
 
@@ -165,6 +173,8 @@ libpal_sgx_host = executable('loader',
     # aesm_proto_ch,
     conf_tyche.get('FILE_TYCHE_BACKEND_C'),
     host_tyche_driver_h,
+    tyche_pts_src,
+    'pal_pt_mapper.c',
 
     include_directories: tyche_inc,
     c_args: [

@@ -38,6 +38,7 @@ option('tyche_drivers', type: 'string',
     description: 'Path to the Tyche drivers (tyche and contalloc)')
 option('tyche_sdk', type: 'string',
     description: 'Path to the Tyche sdk')
+option('tyche_pts', type: 'string', description: 'Path to the pts library')
 
 option('syslibdir', type: 'string',
     description: 'Path to the system library directory')

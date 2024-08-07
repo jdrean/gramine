@@ -16,7 +16,26 @@
 #include "@CONFIG_TYCHE_DRIVER_HEADER@"
 #include "backend.h"
 #include "tyche_api.h"
+#include "pts_api.h"
+#include "x86_64_pt.h"
 
+/* Profile for the page table mapper.*/
+
+typedef struct pt_mapper_t {
+  /* Allocator state. */
+  uint64_t vaddr_start;
+  uint64_t paddr_start;
+  uint64_t vaddr_next_free;
+  uint64_t vaddr_end;
+
+  /* Pointer to the domain */
+  tyche_domain_t* domain;
+} pt_mapper_t;
+
+/* Initialize the pt mappter*/
+void init_pt_mapper(tyche_domain_t* domain);
+/* Relies on the domain's mmaps to figure out the physical address for the given vaddr*/
+int pt_map_region(uint64_t vaddr, uint64_t size, uint64_t flags);
 
 // TODO(aghosn) this might be useful to chose between the sdk backends.
 //#mesondefine CONFIG_SGX_DRIVER_UPSTREAM

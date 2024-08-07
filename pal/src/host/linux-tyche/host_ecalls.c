@@ -2,11 +2,14 @@
 /* Copyright (C) 2014 Stony Brook University */
 
 #include "host_ecalls.h"
+#include "backend.h"
+#include "common.h"
 #include "host_internal.h"
 #include "pal_ecall_types.h"
 #include "pal_rpc_queue.h"
 
-int ecall_enclave_start(char* libpal_uri, char* args, size_t args_size, char* env,
+int ecall_enclave_start(struct pal_enclave* enclave, char* libpal_uri, char* args,
+                        size_t args_size, char* env,
                         size_t env_size, int parent_stream_fd, sgx_target_info_t* qe_targetinfo,
                         struct pal_topo_info* topo_info, struct pal_dns_host_conf* dns_conf,
                         bool edmm_enabled, void* reserved_mem_ranges,
@@ -22,6 +25,7 @@ int ecall_enclave_start(char* libpal_uri, char* args, size_t args_size, char* en
         /* after this point, g_rpc_queue != NULL */
     }
 
+    //TODO: figure out how to implement that inside our implementation.
     struct ecall_enclave_start start_args = {
         .libpal_uri               = libpal_uri,
         .libpal_uri_len           = strlen(libpal_uri),
@@ -38,7 +42,12 @@ int ecall_enclave_start(char* libpal_uri, char* args, size_t args_size, char* en
         .reserved_mem_ranges_size = reserved_mem_ranges_size,
         .rpc_queue                = g_rpc_queue,
     };
-    return sgx_ecall(ECALL_ENCLAVE_START, &start_args);
+    log_error("The first ecall");
+    if (backend_td_vcpu_run(&(enclave->domain), sched_getcpu(), 0) != SUCCESS) {
+      log_error("Oupsy");
+      assert(0);
+    }
+    return 0;
 }
 
 int ecall_thread_start(void) {

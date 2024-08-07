@@ -23,11 +23,13 @@
 #include "host_process.h"
 //#include "host_sgx_driver.h"
 #include "linux_utils.h"
+#include "log.h"
 #include "pal_linux_defs.h"
 #include "pal_linux_error.h"
 #include "pal_rpc_queue.h"
 #include "pal_rtld.h"
 #include "pal_tcb.h"
+#include "sdk_tyche_types.h"
 #include "toml.h"
 #include "toml_utils.h"
 #include "topo_info.h"
@@ -284,6 +286,7 @@ static int initialize_enclave(struct pal_enclave* enclave, const char* manifest_
     memset(&enclave_secs, 0, sizeof(enclave_secs));
     enclave_secs.base = enclave->baseaddr;
     enclave_secs.size = enclave->size;
+    enclave_secs.domain = &(enclave->domain);
     log_error("Enclave baseaddr %lx, size %lx", enclave->baseaddr, enclave->size);
     ret = create_enclave(&enclave_secs, &enclave_token);
     if (ret < 0) {
@@ -441,6 +444,21 @@ static int initialize_enclave(struct pal_enclave* enclave, const char* manifest_
         free_area = &areas[area_num++];
     }
 
+    /* Create the vcpus for all the threads. */
+    for (size_t t = 0; t < enclave->thread_num; t++) {
+      /* Create the thread entries and register the entry point */
+      if (backend_td_create_vcpu(&(enclave->domain), t) != SUCCESS) {
+        log_error("Unable to create vcpu on core %ld", t);
+        ret = -EINVAL;
+        goto out;
+      }
+      if (backend_td_init_vcpu(&(enclave->domain), t) != SUCCESS) {
+        log_error("Unable to init the vcpu on core %ld", t);
+        ret = -EINVAL;
+        goto out;
+      }
+    }
+
     log_debug("Adding pages to SGX enclave, this may take some time...");
     for (int i = 0; i < area_num; i++) {
         if (areas[i].data_src == ELF_FD) {
@@ -488,40 +506,35 @@ static int initialize_enclave(struct pal_enclave* enclave, const char* manifest_
                 gs->heap_min = (void*)enclave_heap_min;
                 gs->heap_max = (void*)pal_area->addr;
                 gs->thread = NULL;
+
+                /* Register the stack pointer address.
+                 * TODO: should we register TLS as well? */
+                if (backend_td_config_vcpu(&(enclave->domain), t, GUEST_RSP,
+                      stack_areas[t].addr + ENCLAVE_STACK_SIZE) != SUCCESS) {
+                  log_error("Error configuring stack on core %ld", t);
+                  goto out;
+                }
             }
         } else if (areas[i].data_src == TCS) {
             for (size_t t = 0; t < enclave->thread_num; t++) {
-
-                /* Create the thread entries and register the entry point */
-                if (backend_td_create_vcpu(&(enclave_secs.domain), t) != SUCCESS) {
-                  log_error("Unable to create vcpu on core %ld", t);
-                  ret = -EINVAL;
-                  goto out;
-                }
-                // TODO(aghosn) maybe change that one to give stack and the rest.
-                if (backend_td_init_vcpu(&(enclave_secs.domain), t) != SUCCESS) {
-                  log_error("Unable to init the vcpu on core %ld", t);
-                  ret = -EINVAL;
-                  goto out;
-                }
-
                 /* Set the limits for segments, the entry point, and stack.*/
                 //TODO(aghosn) maybe it's not an offset in our case.
                 //I removed it, let's see what it looks like when we run.
-                if (backend_td_config_vcpu(&(enclave_secs.domain), t, GUEST_RIP,
+                log_error("The enclave entry addr %lx", enclave_entry_addr);
+                if (backend_td_config_vcpu(&(enclave->domain), t, GUEST_RIP,
                     enclave_entry_addr) != SUCCESS ||
-                    backend_td_config_vcpu(&(enclave_secs.domain), t,
+                    backend_td_config_vcpu(&(enclave->domain), t,
                       GUEST_FS_BASE, 0) != SUCCESS ||
-                    backend_td_config_vcpu(&(enclave_secs.domain), t, GUEST_FS_LIMIT, 0xfff) != SUCCESS ||
-                    backend_td_config_vcpu(&(enclave_secs.domain), t, GUEST_GS_BASE,
+                    backend_td_config_vcpu(&(enclave->domain), t, GUEST_FS_LIMIT, 0xfff) != SUCCESS ||
+                    backend_td_config_vcpu(&(enclave->domain), t, GUEST_GS_BASE,
                       tls_area->addr + t * g_page_size) != SUCCESS ||
-                    backend_td_config_vcpu(&(enclave_secs.domain), t, GUEST_GS_LIMIT, 0xfff) != SUCCESS)
+                    backend_td_config_vcpu(&(enclave->domain), t, GUEST_GS_LIMIT, 0xfff) != SUCCESS ||
+                    backend_td_config_vcpu(&(enclave->domain), t, GUEST_CR3,
+                      enclave->domain.config.page_table_root) != SUCCESS)
                 {
                   log_error("Error while attempting to configure core %ld", t);
                   goto out;
                 }
-
-                log_error("Configured core %ld", t);
 
                 sgx_arch_tcs_t* tcs = data + g_page_size * t;
                 memset(tcs, 0, g_page_size);
@@ -938,10 +951,6 @@ static int load_enclave(struct pal_enclave* enclave, char* args, size_t args_siz
     }
     log_debug("Gramine parsed TOML manifest file successfully");
 
-    ret = open_sgx_driver();
-    if (ret < 0)
-        return ret;
-
     if (!is_wrfsbase_supported())
         return -EPERM;
 
@@ -1042,7 +1051,7 @@ static int load_enclave(struct pal_enclave* enclave, char* args, size_t args_siz
     }
 
     /* start running trusted PAL */
-    ecall_enclave_start(enclave->libpal_uri, args, args_size, env, env_size, parent_stream_fd,
+    ecall_enclave_start(enclave, enclave->libpal_uri, args, args_size, env, env_size, parent_stream_fd,
                         &qe_targetinfo, &topo_info, &dns_conf, enclave->edmm_enabled,
                         reserved_mem_ranges, reserved_mem_ranges_size);
 
@@ -1136,6 +1145,7 @@ int main(int argc, char* argv[], char* envp[]) {
     void* reserved_mem_ranges = NULL;
     size_t reserved_mem_ranges_size = 0;
     log_error("Inside the main function!");
+    memset(&(g_pal_enclave.domain), 0, sizeof(tyche_domain_t));
 
 #ifdef DEBUG
     ret = debug_map_init_from_proc_maps();

@@ -171,11 +171,15 @@ if tyche
   tyche_contalloc_path = tyche_drivers / 'contalloc'
   tyche_contalloc_headers = tyche_contalloc_path / 'include'
   tyche_sdk_path = get_option('tyche_sdk')
+  tyche_pts = get_option('tyche_pts')
   if not fs.is_absolute(tyche_driver_path)
     error('Provide an absolute path for the tyche driver in -Dtyche_driver_path.')
   endif
   if not fs.is_absolute(tyche_sdk_path)
     error('The tyche_sdk must be an absolute path')
+  endif
+  if not fs.is_absolute(tyche_pts)
+    error('The provided pts path is not absolute')
   endif
 
   # Driver libraries.
@@ -204,7 +208,7 @@ if tyche
     tyche_driver_capa_headers, tyche_driver_capa_headers,
     tyche_driver_common_headers, tyche_driver_dll_headers,
     tyche_backend_c, tyche_sdk_include, tyche_contalloc_path,
-    tyche_contalloc_headers,
+    tyche_contalloc_headers, tyche_pts,
   ]
 
   foreach f: paths
@@ -223,6 +227,7 @@ if tyche
   conf_tyche.set('CONFIG_TYCHE_DRIVER_DLL_INCLUDE', tyche_driver_dll_headers)
   conf_tyche.set('CONFIG_TYCHE_SDK_INCLUDE', tyche_sdk_include)
   conf_tyche.set('FILE_TYCHE_BACKEND_C', tyche_backend_c)
+  conf_tyche.set('CONFIG_TYCHE_PTS', tyche_pts)
 endif
 
 gen_symbol_map_cmd = [
