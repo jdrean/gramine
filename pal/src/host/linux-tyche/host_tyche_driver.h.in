@@ -20,7 +20,6 @@
 #include "x86_64_pt.h"
 
 /* Profile for the page table mapper.*/
-
 typedef struct pt_mapper_t {
   /* Allocator state. */
   uint64_t vaddr_start;
@@ -36,6 +35,8 @@ typedef struct pt_mapper_t {
 void init_pt_mapper(tyche_domain_t* domain);
 /* Relies on the domain's mmaps to figure out the physical address for the given vaddr*/
 int pt_map_region(uint64_t vaddr, uint64_t size, uint64_t flags);
+/* Dispatch an ocall*/
+void dispatch_tyche_ocall(int t);
 
 // TODO(aghosn) this might be useful to chose between the sdk backends.
 //#mesondefine CONFIG_SGX_DRIVER_UPSTREAM

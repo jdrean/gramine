@@ -82,13 +82,12 @@ enclave_entry:
 
     # x86-64 SysV ABI requires RFLAGS.DF = 0 on entry to function call.
     cld
-
     # CSSA = 1 -- this is a "stage-1 exception handler" flow
-    cmpq $0, %rax
-    jne .Lcssa1_exception
+    #cmpq $0, %rax
+    #jne .Lcssa1_exception
 
     # RCX contains ECALL return address (filled by EENTER hardware flow)
-    movq %rcx, %gs:SGX_ECALL_RETURN_ADDR
+    # movq %rcx, %gs:SGX_ECALL_RETURN_ADDR
 
     # OCALL stack was prepared previously -- this is a "return from OCALL" flow
     cmpq $0, %gs:SGX_PRE_OCALL_STACK
@@ -98,11 +97,10 @@ enclave_entry:
     jmp .Lcssa0_ecall
 
 .Lcssa0_ecall:
-    # PAL convention:
-    #   RDI - ECALL number
+    # PAL convention for tyche:
+    #   RDI - return handle
     #   RSI - pointer to ecall arguments
-    #   RDX - exit target
-    #   RCX - enclave base
+    #   RDX - enclave base
 
     cmpq $ECALL_THREAD_RESET, %rdi
     je .Lcssa0_ecall_thread_reset
@@ -118,11 +116,11 @@ enclave_entry:
     movq $1, %gs:SGX_THREAD_STARTED
 
     # calculate enclave base = RBX (trusted) - GS:SGX_TCS_OFFSET
-    mov %rbx, %rcx
-    subq %gs:SGX_TCS_OFFSET, %rcx
+    mov %rbx, %rdx
+    subq %gs:SGX_TCS_OFFSET, %rdx
 
     # switch to enclave stack
-    movq %gs:SGX_INITIAL_STACK_ADDR, %rsp
+    #movq %gs:SGX_INITIAL_STACK_ADDR, %rsp
 
     # clear the rest of register states
     xorq %rax, %rax
@@ -558,8 +556,8 @@ enclave_entry:
     .cfi_endproc
 
 
-    .global sgx_ocall
-    .type sgx_ocall, @function
+    .global sgx_ocall_old
+    .type sgx_ocall_old, @function
 sgx_ocall:
 .Lcssa0_ocall:
     # Arguments:

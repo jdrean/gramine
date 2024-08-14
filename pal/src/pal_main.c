@@ -604,11 +604,9 @@ noreturn void pal_main(uint64_t instance_id,       /* current instance id */
 
     pal_disable_early_memory_bookkeeping();
 
-    log_error("Before start execution");
 
     /* Now we will start the execution */
     start_execution(arguments, final_environments);
-    log_error("After start execution");
 
 out_fail:
     /* We wish we will never reached here */

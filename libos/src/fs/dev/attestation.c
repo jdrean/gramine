@@ -324,8 +324,12 @@ static int key_save(struct libos_dentry* dent, const char* data, size_t size) {
 }
 
 static int init_sgx_attestation(struct pseudo_node* attestation, struct pseudo_node* keys) {
-    if (strcmp(g_pal_public_state->host_type, "Linux-SGX"))
+    if (strcmp(g_pal_public_state->host_type, "Linux-SGX")) {
         return 0;
+    }
+    if (strcmp(g_pal_public_state->host_type, "Linux-Tyche")) {
+      return 0;
+    }
 
     if (!g_pal_public_state->attestation_type) {
         log_error("Cannot determine remote attestation type during init of /dev/attestation/");

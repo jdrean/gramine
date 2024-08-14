@@ -38,7 +38,7 @@ install_headers('sgx_arch.h', 'sgx_attest.h', subdir : 'gramine')
 
 cflags_pal_sgx = [
     cflags_pal_common,
-    '-DHOST_TYPE=Linux-SGX',
+    '-DHOST_TYPE=Linux-Tyche',
     # Some of the code uses `alignof` on expressions, which is a GNU extension. Silence Clang - it
     # complains but does support it.
     '-Wno-gnu-alignof-expression',
@@ -175,6 +175,7 @@ libpal_sgx_host = executable('loader',
     host_tyche_driver_h,
     tyche_pts_src,
     'pal_pt_mapper.c',
+    'host_pal_shared_memory.c',
 
     include_directories: tyche_inc,
     c_args: [

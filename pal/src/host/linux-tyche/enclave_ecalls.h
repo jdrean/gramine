@@ -2,4 +2,5 @@
 
 #pragma once
 
-void handle_ecall(long ecall_index, void* ecall_args, void* exit_target, void* enclave_base_addr);
+#include "tyche_capabilities_types.h"
+void handle_ecall(capa_index_t ret_index, void* ecall_args, void* enclave_base_addr);

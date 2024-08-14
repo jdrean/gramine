@@ -17,6 +17,7 @@
 #include "debug_map.h"
 #include "host_ecalls.h"
 #include "host_internal.h"
+#include "host_pal_shmem.h"
 #include "host_process.h"
 #include "linux_utils.h"
 #include "pal_ocall_types.h"
@@ -85,12 +86,19 @@ static long sgx_ocall_exit(void* args) {
 static long sgx_ocall_mmap_untrusted(void* args) {
     struct ocall_mmap_untrusted* ocall_mmap_args = args;
     void* addr;
-
-    addr = (void*)DO_SYSCALL(mmap, ocall_mmap_args->addr, ocall_mmap_args->size,
+    if (ocall_mmap_args->prot == PROT_NONE) {
+      addr = (void*)DO_SYSCALL(mmap, ocall_mmap_args->addr, ocall_mmap_args->size,
                              ocall_mmap_args->prot, ocall_mmap_args->flags, ocall_mmap_args->fd,
                              ocall_mmap_args->offset);
+    } else {
+      assert(ocall_mmap_args->fd == -1);
+      assert(ocall_mmap_args->offset == 0);
+      assert(ocall_mmap_args->addr == NULL);
+      addr = shinfo_mmap(ocall_mmap_args->size);
+    }
+
     if (IS_PTR_ERR(addr))
-        return PTR_TO_ERR(addr);
+      return PTR_TO_ERR(addr);
 
     ocall_mmap_args->addr = addr;
     return 0;
@@ -902,4 +910,14 @@ int start_rpc(size_t threads_cnt) {
     }
 
     return 0;
+}
+
+void dispatch_tyche_ocall(int t)
+{
+  shmem_info_t* shinfo = get_shmem_info();
+  thread_ocall_t * ocall =
+    (thread_ocall_t*) ((shinfo->ustacks + (t + 1) * USTACK_DEFAULT_SIZE) - sizeof(thread_ocall_t));
+  ocall->ret = ocall_table[ocall->ocall_num](ocall->args);
+  ocall->ocall_num = 0;
+  ocall->args = NULL;
 }

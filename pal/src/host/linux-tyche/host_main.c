@@ -20,16 +20,19 @@
 #include "host_ecalls.h"
 #include "host_internal.h"
 #include "host_log.h"
+#include "host_pal_shmem.h"
 #include "host_process.h"
 //#include "host_sgx_driver.h"
 #include "linux_utils.h"
 #include "log.h"
+#include "pal.h"
 #include "pal_linux_defs.h"
 #include "pal_linux_error.h"
 #include "pal_rpc_queue.h"
 #include "pal_rtld.h"
 #include "pal_tcb.h"
 #include "sdk_tyche_types.h"
+#include "sgx_arch.h"
 #include "toml.h"
 #include "toml_utils.h"
 #include "topo_info.h"
@@ -226,7 +229,6 @@ static int initialize_enclave(struct pal_enclave* enclave, const char* manifest_
         return -ENOMEM;
     }
 
-    log_error("The enclave libpal uri %s", enclave->libpal_uri);
     enclave_image = DO_SYSCALL(open, enclave->libpal_uri + URI_PREFIX_FILE_LEN,
                                O_RDONLY | O_CLOEXEC, 0);
     if (enclave_image < 0) {
@@ -287,8 +289,7 @@ static int initialize_enclave(struct pal_enclave* enclave, const char* manifest_
     enclave_secs.base = enclave->baseaddr;
     enclave_secs.size = enclave->size;
     enclave_secs.domain = &(enclave->domain);
-    log_error("Enclave baseaddr %lx, size %lx", enclave->baseaddr, enclave->size);
-    ret = create_enclave(&enclave_secs, &enclave_token);
+    ret = create_enclave(&enclave_secs, &enclave_token, enclave->thread_num);
     if (ret < 0) {
         log_error("Creating enclave failed: %s", unix_strerror(ret));
         goto out;
@@ -415,7 +416,6 @@ static int initialize_enclave(struct pal_enclave* enclave, const char* manifest_
                                         .type         = SGX_PAGE_TYPE_REG};
     struct mem_area* pal_area = &areas[area_num++];
     ret = scan_enclave_binary(enclave_image, &pal_area->addr, &pal_area->size, &enclave_entry_addr);
-    log_error("What we obtained from the scan_enclave: %p, size %lx", (void*) pal_area->addr, pal_area->size);
     if (ret < 0) {
         log_error("Scanning PAL binary (%s) failed: %s", enclave->libpal_uri, unix_strerror(ret));
         goto out;
@@ -427,7 +427,6 @@ static int initialize_enclave(struct pal_enclave* enclave, const char* manifest_
             continue;
         areas[i].addr = last_populated_addr - areas[i].size;
         last_populated_addr = areas[i].addr;
-        log_error("area %s -> addr: %p, size: 0x%lx\n", areas[i].desc, (void*) areas[i].addr, areas[i].size);
     }
 
     enclave_entry_addr += pal_area->addr;
@@ -489,6 +488,7 @@ static int initialize_enclave(struct pal_enclave* enclave, const char* manifest_
         }
 
         if (areas[i].data_src == TLS) {
+            shmem_info_t* shinfo = get_shmem_info();
             for (size_t t = 0; t < enclave->thread_num; t++) {
                 struct pal_enclave_tcb* gs = data + g_page_size * t;
                 memset(gs, 0, g_page_size);
@@ -502,13 +502,14 @@ static int initialize_enclave(struct pal_enclave* enclave, const char* manifest_
                 gs->sig_stack_high = sig_stack_areas[t].addr + ENCLAVE_SIG_STACK_SIZE;
                 gs->ssa = (void*)ssa_area->addr + enclave->ssa_frame_size * SSA_FRAME_NUM * t;
                 gs->gpr = gs->ssa + enclave->ssa_frame_size - sizeof(sgx_pal_gpr_t);
+                /* Set the ustack here. The current code grows it DOWN.*/
+                gs->ustack = ((uint64_t)shinfo->ustacks) + (t+1) * USTACK_DEFAULT_SIZE;
+                gs->ustack_top = gs->ustack;
                 gs->manifest_size = manifest_size;
                 gs->heap_min = (void*)enclave_heap_min;
                 gs->heap_max = (void*)pal_area->addr;
                 gs->thread = NULL;
 
-                /* Register the stack pointer address.
-                 * TODO: should we register TLS as well? */
                 if (backend_td_config_vcpu(&(enclave->domain), t, GUEST_RSP,
                       stack_areas[t].addr + ENCLAVE_STACK_SIZE) != SUCCESS) {
                   log_error("Error configuring stack on core %ld", t);
@@ -516,11 +517,11 @@ static int initialize_enclave(struct pal_enclave* enclave, const char* manifest_
                 }
             }
         } else if (areas[i].data_src == TCS) {
+            shmem_info_t* shinfo = get_shmem_info();
             for (size_t t = 0; t < enclave->thread_num; t++) {
                 /* Set the limits for segments, the entry point, and stack.*/
                 //TODO(aghosn) maybe it's not an offset in our case.
                 //I removed it, let's see what it looks like when we run.
-                log_error("The enclave entry addr %lx", enclave_entry_addr);
                 if (backend_td_config_vcpu(&(enclave->domain), t, GUEST_RIP,
                     enclave_entry_addr) != SUCCESS ||
                     backend_td_config_vcpu(&(enclave->domain), t,
@@ -530,7 +531,11 @@ static int initialize_enclave(struct pal_enclave* enclave, const char* manifest_
                       tls_area->addr + t * g_page_size) != SUCCESS ||
                     backend_td_config_vcpu(&(enclave->domain), t, GUEST_GS_LIMIT, 0xfff) != SUCCESS ||
                     backend_td_config_vcpu(&(enclave->domain), t, GUEST_CR3,
-                      enclave->domain.config.page_table_root) != SUCCESS)
+                      enclave->domain.config.page_table_root) != SUCCESS ||
+                    /* SGX expects tcs inside rbx */
+                    backend_td_config_vcpu(&(enclave->domain), t, REG_GP_RBX, areas[i].addr) != SUCCESS ||
+                    backend_td_config_vcpu(&(enclave->domain), t, REG_GP_RSI,
+                      (usize) &(shinfo->enclave_args[t])) != SUCCESS)
                 {
                   log_error("Error while attempting to configure core %ld", t);
                   goto out;
@@ -934,7 +939,7 @@ static int load_enclave(struct pal_enclave* enclave, char* args, size_t args_siz
     int ret;
     struct timeval tv;
     struct pal_topo_info topo_info = {0};
-    struct pal_dns_host_conf dns_conf = {0};
+    struct pal_dns_host_conf* dns_conf = NULL;
     bool extra_runtime_domain_names_conf;
     uint64_t start_time;
     DO_SYSCALL(gettimeofday, &tv, NULL);
@@ -953,27 +958,6 @@ static int load_enclave(struct pal_enclave* enclave, char* args, size_t args_siz
 
     if (!is_wrfsbase_supported())
         return -EPERM;
-
-    /* Get host information and topology only for the first process. This information will be
-     * checkpointed and restored during forking of the child process(es). */
-    if (parent_stream_fd < 0) {
-        ret = get_topology_info(&topo_info);
-        if (ret < 0)
-            return ret;
-
-        if (extra_runtime_domain_names_conf) {
-            ret = parse_resolv_conf(&dns_conf);
-            if (ret < 0) {
-                log_error("Unable to parse host's /etc/resolv.conf");
-                return ret;
-            }
-            ret = get_hosts_hostname(dns_conf.hostname, sizeof(dns_conf.hostname));
-            if (ret < 0) {
-                log_error("Unable to get host's hostname");
-                return ret;
-            }
-        }
-    }
 
     enclave->libpal_uri = alloc_concat(URI_PREFIX_FILE, URI_PREFIX_FILE_LEN, g_libpal_path, -1);
     if (!enclave->libpal_uri) {
@@ -1010,17 +994,51 @@ static int load_enclave(struct pal_enclave* enclave, char* args, size_t args_siz
     if (ret < 0)
         return ret;
 
+    /* Get host information and topology only for the first process. This information will be
+     * checkpointed and restored during forking of the child process(es). */
+    dns_conf = alloc_into_shinfo(sizeof(struct pal_dns_host_conf));
+    if (dns_conf == NULL) {
+      log_error("Unable to allocate the pal_dns host conf");
+    }
+    if (parent_stream_fd < 0) {
+        ret = get_topology_info(&topo_info);
+        if (ret < 0)
+            return ret;
+
+        if (extra_runtime_domain_names_conf) {
+            ret = parse_resolv_conf(dns_conf);
+            if (ret < 0) {
+                log_error("Unable to parse host's /etc/resolv.conf");
+                return ret;
+            }
+            ret = get_hosts_hostname(dns_conf->hostname, sizeof(dns_conf->hostname));
+            if (ret < 0) {
+                log_error("Unable to get host's hostname");
+                return ret;
+            }
+        }
+    }
+
+    /* Copy some of the arguments.*/
+    char* copied_args = copy_into_shinfo(args, args_size+1);
+    assert(copied_args != NULL);
+    char* copied_uri = copy_into_shinfo(enclave->libpal_uri, strlen(enclave->libpal_uri)+1);
+    assert(copied_uri != NULL);
+    char* copied_env = copy_into_shinfo(env, env_size+1);
+    assert(copied_env != NULL);
+    struct pal_topo_info* copied_topo = copy_topology_into_shinfo(&topo_info);
     ret = sgx_signal_setup();
     if (ret < 0)
         return ret;
 
-    sgx_target_info_t qe_targetinfo = {0};
+    sgx_target_info_t* qe_targetinfo = alloc_into_shinfo(sizeof(sgx_target_info_t));
+    assert(qe_targetinfo != NULL);
     if (enclave->attestation_type != SGX_ATTESTATION_NONE) {
         /* initialize communication with Quoting Enclave only if app requests attestation */
         log_debug("Using SGX attestation type \"%s\"",
                   attestation_type_to_str(enclave->attestation_type));
         bool is_epid = enclave->attestation_type == SGX_ATTESTATION_EPID;
-        ret = init_quoting_enclave_targetinfo(is_epid, &qe_targetinfo);
+        ret = init_quoting_enclave_targetinfo(is_epid, qe_targetinfo);
         if (ret < 0)
             return ret;
     }
@@ -1051,8 +1069,8 @@ static int load_enclave(struct pal_enclave* enclave, char* args, size_t args_siz
     }
 
     /* start running trusted PAL */
-    ecall_enclave_start(enclave, enclave->libpal_uri, args, args_size, env, env_size, parent_stream_fd,
-                        &qe_targetinfo, &topo_info, &dns_conf, enclave->edmm_enabled,
+    ecall_enclave_start(enclave, copied_uri, copied_args, args_size, copied_env, env_size, parent_stream_fd,
+                        qe_targetinfo, copied_topo, dns_conf, enclave->edmm_enabled,
                         reserved_mem_ranges, reserved_mem_ranges_size);
 
     unmap_my_tcs();
@@ -1144,7 +1162,6 @@ int main(int argc, char* argv[], char* envp[]) {
     char* manifest = NULL;
     void* reserved_mem_ranges = NULL;
     size_t reserved_mem_ranges_size = 0;
-    log_error("Inside the main function!");
     memset(&(g_pal_enclave.domain), 0, sizeof(tyche_domain_t));
 
 #ifdef DEBUG

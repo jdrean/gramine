@@ -5,6 +5,13 @@
 
 #include "sgx_arch.h"
 
+/* Used in tyche to pass ocall arguments. */
+typedef struct thread_ocall_t {
+    int ocall_num;
+    void* args;
+    int ret;
+} thread_ocall_t;
+
 long sgx_ocall(uint64_t code, void* ms);
 
 bool sgx_is_completely_within_enclave(const void* addr, size_t size);
@@ -24,16 +31,18 @@ void* sgx_import_array_to_enclave(const void* uptr, size_t elem_size, size_t ele
 void* sgx_import_array2d_to_enclave(const void* uptr, size_t elem_size, size_t elem_cnt1,
                                     size_t elem_cnt2);
 
-#define COPY_UNTRUSTED_VALUE(untrusted_ptr) ({                          \
-    __typeof__(*(untrusted_ptr)) val;                                   \
-    sgx_copy_to_enclave_verified(&val, untrusted_ptr, sizeof(val));     \
-    val;                                                                \
-})
+#define COPY_UNTRUSTED_VALUE(untrusted_ptr)                             \
+    ({                                                                  \
+        __typeof__(*(untrusted_ptr)) val;                               \
+        sgx_copy_to_enclave_verified(&val, untrusted_ptr, sizeof(val)); \
+        val;                                                            \
+    })
 
-#define COPY_VALUE_TO_UNTRUSTED(untrusted_ptr, val) ({                            \
-    __typeof__(*(untrusted_ptr)) src_val = (val);                                 \
-    sgx_copy_from_enclave_verified(untrusted_ptr, &src_val, sizeof(src_val));     \
-})
+#define COPY_VALUE_TO_UNTRUSTED(untrusted_ptr, val)                               \
+    ({                                                                            \
+        __typeof__(*(untrusted_ptr)) src_val = (val);                             \
+        sgx_copy_from_enclave_verified(untrusted_ptr, &src_val, sizeof(src_val)); \
+    })
 
 /*!
  * \brief Low-level wrapper around EREPORT instruction leaf.

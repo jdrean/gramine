@@ -6,6 +6,7 @@
 
 #include "backend.h"
 #include "hex.h"
+#include "host_pal_shmem.h"
 #include "host_tyche_driver.h"
 #include "log.h"
 #include "placeholder.h"
@@ -162,7 +163,7 @@ static uint64_t compute_pages(uint64_t base, uint64_t size)
   return 1 + pages[0] + pages[1] + pages[2];
 }
 
-int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token) {
+int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token, unsigned long nb_threads) {
     assert(secs->size && IS_POWER_OF_2(secs->size));
     assert(IS_ALIGNED(secs->base, secs->size));
     assert(secs->domain != NULL);
@@ -199,8 +200,6 @@ int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token) {
     if (backend_td_create(secs->domain) != SUCCESS) {
       log_error("Unable to create the enclave : %s", unix_strerror(ENODEV));
       return -ENODEV;
-    } else {
-      log_error("CREATING A DOMAIN\n");
     }
 
     uint64_t end = request_mmap_addr + request_mmap_size;
@@ -235,6 +234,20 @@ int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token) {
       }
       assert(addr == vaddr);
     }
+
+    /* Allocate shared memory*/
+    if (init_shinfo(secs->domain, nb_threads, end) == NULL) {
+      log_error("Unable to allocate the init_shinfo");
+      return -errno;
+    }
+    /* Update the end. */
+    end += get_shmem_info()->raw_size;
+
+    /* Update the pts_pages to include the shared pages.*/
+    shmem_info_t* info = get_shmem_info();
+    pts_pages_size += compute_pages(info->raw_start, info->raw_size) * PAGE_SIZE;
+
+
     /* now allocate the memory for the domain's page tables. */
     if (backend_td_mmap(secs->domain, (void*) end, pts_pages_size ,
           PROT_READ | PROT_WRITE, MAP_FIXED_NOREPLACE | MAP_SHARED) != SUCCESS) {
@@ -246,21 +259,27 @@ int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token) {
 
     /* add the page tables to the domain.*/
     if (backend_td_register_region(secs->domain,
-        secs->domain->mmaps.tail->virtoffset, secs->domain->mmaps.tail->size,
+        (usize) pts, secs->domain->mmaps.tail->size,
         MEM_READ | MEM_WRITE | MEM_SUPER, CONFIDENTIAL) != SUCCESS) {
       log_error("Unable to register the page table mmaps.");
       return -errno;
     }
-
     /* Initialize the cores and traps.
      * For the moment set default values where we allow everything. */
-    secs->domain->traps = ALL_TRAPS;
+    secs->domain->traps = NO_TRAPS;
     secs->domain->core_map = 1;
     secs->domain->perms = DEFAULT_PERM;
     secs->domain->config.page_table_root = secs->domain->mmaps.tail->physoffset;
 
     /* initialize the pt_mapper */
     init_pt_mapper(secs->domain);
+
+    /* Map the shared memory region now. */
+    if (pt_map_region((uint64_t)info->raw_start, info->raw_size,
+          PT_PP | PT_RW | PT_NX) != SUCCESS) {
+      log_error("Unable to map the shared memory region.");
+      return -EINVAL;
+    }
 
     /* Set the traps. */
     if (backend_td_config(

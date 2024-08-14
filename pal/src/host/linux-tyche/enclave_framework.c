@@ -141,7 +141,6 @@ static void copy_u64s(void* dst, const void* src, size_t count) {
 
 static void copy_u64s_from_untrusted(void* dst, const void* untrusted_src, size_t count) {
     assert((uintptr_t)untrusted_src % 8 == 0);
-
     copy_u64s(dst, untrusted_src, count);
 }
 
@@ -207,7 +206,6 @@ bool sgx_copy_to_enclave(void* ptr, size_t maxsize, const void* uptr, size_t usi
         !sgx_is_completely_within_enclave(ptr, maxsize)) {
         return false;
     }
-
     sgx_copy_to_enclave_verified(ptr, uptr, usize);
     return true;
 }
@@ -870,7 +868,7 @@ int init_trusted_files(void) {
             goto out;
         }
 
-        toml_raw_t toml_trusted_sha256_raw = toml_raw_in(toml_trusted_file, "sha256");
+        /*toml_raw_t toml_trusted_sha256_raw = toml_raw_in(toml_trusted_file, "sha256");
         if (!toml_trusted_sha256_raw) {
             log_error("Invalid trusted file in manifest at index %ld (no 'sha256' key)", i);
             ret = -PAL_ERROR_INVAL;
@@ -883,7 +881,7 @@ int init_trusted_files(void) {
                       i);
             ret = -PAL_ERROR_INVAL;
             goto out;
-        }
+        }*/
 
         ret = normalize_and_register_file(toml_trusted_uri_str, toml_trusted_sha256_str);
         if (ret < 0) {
@@ -1058,19 +1056,20 @@ int init_seal_key_material(void) {
 }
 
 int init_enclave(void) {
+    //Nothing to do here.
     /* initialize enclave information (MRENCLAVE, etc.) of current enclave (via EREPORT) */
-    __sgx_mem_aligned sgx_target_info_t targetinfo = {0};
-    __sgx_mem_aligned sgx_report_data_t reportdata = {0};
-    __sgx_mem_aligned sgx_report_t report;
+    //__sgx_mem_aligned sgx_target_info_t targetinfo = {0};
+    //__sgx_mem_aligned sgx_report_data_t reportdata = {0};
+    //__sgx_mem_aligned sgx_report_t report;
 
-    int ret = sgx_report(&targetinfo, &reportdata, &report);
-    if (ret) {
-        log_error("Failed to get SGX report for current enclave");
-        return -PAL_ERROR_INVAL;
-    }
+    //int ret = sgx_report(&targetinfo, &reportdata, &report);
+    //if (ret) {
+    //    log_error("Failed to get SGX report for current enclave");
+    //    return -PAL_ERROR_INVAL;
+    //}
 
-    memcpy(&g_pal_linuxsgx_state.enclave_info, &report.body,
-           sizeof(g_pal_linuxsgx_state.enclave_info));
+    //memcpy(&g_pal_linuxsgx_state.enclave_info, &report.body,
+    //       sizeof(g_pal_linuxsgx_state.enclave_info));
     return 0;
 }
 

@@ -71,11 +71,6 @@ callback_action_t pte_page_mapper(entry_t* curr, level_t level, pt_profile_t* pr
    addr = profile->allocate(NULL);
   }
   *curr = (addr & PT_PHYS_PAGE_MASK) | flags;
-  if (level == PT_PTE &&
-      profile->curr_va < 0xff3a498 &&
-      (profile->curr_va + PT_PAGE_SIZE) > 0xff3a498) {
-    log_error("We found the entry and wrote: %llx", *curr);
-  }
   return WALK; 
 }
 
