@@ -245,7 +245,10 @@ noreturn void _PalThreadExit(int* clear_child_tid) {
             spinlock_unlock(&g_unused_tcs_pages_num_lock);
         }
     }
-
+    //TODO(aghosn): in tyche we pin threads to cores.
+    //Nobody will attempt to get the thread TCS while the core is busy so we can
+    //just clear it here.
+    *clear_child_tid = 0;
     ocall_exit(0, /*is_exitgroup=*/false);
 }
 
