@@ -267,8 +267,8 @@ int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token, unsigned long
     /* Initialize the cores and traps.
      * For the moment set default values where we allow everything. */
     secs->domain->traps = NO_TRAPS;
-    secs->domain->core_map = 1;
-    secs->domain->perms = DEFAULT_PERM;
+    secs->domain->core_map = (1 << nb_threads) -1;
+    secs->domain->perms = DEFAULT_PERM | TYCHE_PERM_CPUID;
     secs->domain->config.page_table_root = secs->domain->mmaps.tail->physoffset;
 
     /* initialize the pt_mapper */

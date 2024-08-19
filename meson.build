@@ -69,20 +69,38 @@ python3_pkgdir = python3_platlib / 'graminelibos'
 pkgconfig = import('pkgconfig')
 
 if host_machine.cpu_family() == 'x86_64'
-    nasm_gen = generator(
-        find_program('nasm'),
-        output: '@BASENAME@.o',
-        depfile: '@BASENAME@.dep',
-        arguments: [
-            '-f', 'elf64',
-            '-p', '@SOURCE_DIR@/common/src/arch/x86_64/no_exec_stack.nasm',
-            '-I', '@0@/'.format(meson.current_build_dir()),
-            '-MQ', '@OUTPUT@', '-MF', '@DEPFILE@',
-            '@EXTRA_ARGS@',
-            '@INPUT@',
-            '-o', '@OUTPUT@'
-        ]
-    )
+    if tyche
+      nasm_gen = generator(
+          find_program('nasm'),
+          output: '@BASENAME@.o',
+          depfile: '@BASENAME@.dep',
+          arguments: [
+              '-DNO_RFLAGS=1',
+              '-f', 'elf64',
+              '-p', '@SOURCE_DIR@/common/src/arch/x86_64/no_exec_stack.nasm',
+              '-I', '@0@/'.format(meson.current_build_dir()),
+              '-MQ', '@OUTPUT@', '-MF', '@DEPFILE@',
+              '@EXTRA_ARGS@',
+              '@INPUT@',
+              '-o', '@OUTPUT@'
+          ]
+      )
+    else
+      nasm_gen = generator(
+          find_program('nasm'),
+          output: '@BASENAME@.o',
+          depfile: '@BASENAME@.dep',
+          arguments: [
+              '-f', 'elf64',
+              '-p', '@SOURCE_DIR@/common/src/arch/x86_64/no_exec_stack.nasm',
+              '-I', '@0@/'.format(meson.current_build_dir()),
+              '-MQ', '@OUTPUT@', '-MF', '@DEPFILE@',
+              '@EXTRA_ARGS@',
+              '@INPUT@',
+              '-o', '@OUTPUT@'
+          ]
+      )
+    endif
 endif
 
 add_project_arguments(

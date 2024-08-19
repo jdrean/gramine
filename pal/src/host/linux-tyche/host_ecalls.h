@@ -13,6 +13,6 @@ int ecall_enclave_start(struct pal_enclave* enclave, char* libpal_uri, char* arg
                         struct pal_dns_host_conf* host_conf, bool edmm_enabled,
                         void* reserved_mem_ranges, size_t reserved_mem_ranges_size);
 
-int ecall_thread_start(void);
+int ecall_thread_start(int core_id);
 
 int ecall_thread_reset(void);

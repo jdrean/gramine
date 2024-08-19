@@ -69,9 +69,11 @@ libos_syscall_entry:
     # here.
     andq $~0x100, (%rsp)
 
+#if NO_RFLAGS != 1
     # Set default rflags value (just IF set).
     pushq $0x202
     popfq
+#endif
 
     push %rcx # rip
     push %r11 # rsp

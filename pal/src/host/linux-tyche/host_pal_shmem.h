@@ -38,3 +38,4 @@ void* alloc_into_shinfo(size_t size);
 void* copy_into_shinfo(void* src, size_t size);
 char** copy_strarray_into_shinfo(char** arr, size_t size);
 struct pal_topo_info* copy_topology_into_shinfo(struct pal_topo_info* topo);
+void tyche_pin_to_core(int core_id);

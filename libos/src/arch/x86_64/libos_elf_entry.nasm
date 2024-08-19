@@ -25,7 +25,9 @@ call_elf_entry:
     ldmxcsr [rsp]    ; set MXCSR to 0x1F80
     add     rsp, 8   ; let's clean stack, it shouldn't matter, but let's keep it clean
                      ; for further uses
+%ifndef NO_RFLAGS
     push    0x202
     popf             ; set lower part of rFLAGS to 0
+%endif
     mov     rsp, rsi ; set stack pointer to second arg
     jmp     rdi      ; jmp to entry point (first arg)

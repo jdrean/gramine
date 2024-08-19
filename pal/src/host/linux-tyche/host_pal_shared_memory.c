@@ -16,6 +16,9 @@
 #include "pal_topology.h"
 #include "sgx_arch.h"
 
+#define _GNU_SOURCE
+#include <sched.h>
+
 #define BUMP_BUFFER_PAGES 20
 #define EXTRA_MMAP_PAGES 50
 
@@ -222,4 +225,25 @@ struct pal_topo_info* copy_topology_into_shinfo(struct pal_topo_info* topo) {
   return c_topo;
 failure:
   return NULL;
+}
+
+void tyche_pin_to_core(int core_id) {
+  // Figure out sched-affinity.
+  int tid = 0;
+  cpu_set_t mask;
+  assert(core_id < 4);
+
+  // Clear the CPU set (initialize all bits to 0)
+  memset(&mask, 0, sizeof(cpu_set_t));
+
+  // Manually set CPU 0 (bit 0)
+  ((unsigned long *)&mask)[0] |= (1UL << core_id);
+
+  // Manually set CPU 1 (bit 1)
+
+  // Set the CPU affinity for the current process
+  if (sched_setaffinity(tid, sizeof(mask), &mask) == -1) {
+      perror("sched_setaffinity");
+      exit(-1);
+  }
 }

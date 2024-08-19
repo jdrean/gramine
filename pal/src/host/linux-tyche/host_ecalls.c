@@ -11,6 +11,48 @@
 #include "pal_ecall_types.h"
 #include "pal_rpc_queue.h"
 
+
+static void pin_and_run(struct pal_enclave* enclave, int core_id) {
+    tyche_pin_to_core(core_id);
+    int ret = SUCCESS;
+    do {
+      ret = backend_td_vcpu_run(&(enclave->domain), core_id, 1 << 10);
+      if (ret != SUCCESS) {
+        log_error("Oupsy %d %d", errno, core_id);
+        assert(0);
+      }
+      // The errno reports the exit reason from the driver.
+      switch (errno) {
+        case UNKNOWN:
+          dispatch_tyche_ocall(core_id);
+          break;
+        case MEM_FAULT:
+          log_error("Memory fault.");
+          ret = FAILURE;
+          break;
+        case EXCEPTION:
+          log_error("Received an exception");
+          ret = FAILURE;
+          break;
+        case INTERRUPT:
+          log_error("Received an interrupt");
+          ret = FAILURE;
+          break;
+        case TIMER:
+          continue;
+          break;
+        case REVOKED:
+          log_error("Domain revoked");
+          ret = FAILURE;
+          break;
+        default:
+          log_error("weird value %d", errno);
+          break;
+      }
+    } while(ret == SUCCESS);
+    log_error("All done on thread %d (errno: %d)", core_id, errno);
+}
+
 int ecall_enclave_start(struct pal_enclave* enclave, char* libpal_uri, char* args,
                         size_t args_size, char* env,
                         size_t env_size, int parent_stream_fd, sgx_target_info_t* qe_targetinfo,
@@ -47,49 +89,17 @@ int ecall_enclave_start(struct pal_enclave* enclave, char* libpal_uri, char* arg
     //TODO: the enclave expects rbx to point to the TCS.
     //We also need to copy the arguments somewhere in shared memory.
     //TODO(aghosn) write a more complicated loop here to check why we exited.
-    do {
-      ret = backend_td_vcpu_run(&(enclave->domain), sched_getcpu(), 0);
-      if (ret != SUCCESS) {
-        log_error("Oupsy %d", errno);
-        assert(0);
-      }
-      // The errno reports the exit reason from the driver.
-      switch (errno) {
-        case UNKNOWN:
-          dispatch_tyche_ocall(0);
-          break;
-        case MEM_FAULT:
-          log_error("Memory fault.");
-          ret = FAILURE;
-          break;
-        case EXCEPTION:
-          log_error("Received an exception");
-          ret = FAILURE;
-          break;
-        case INTERRUPT:
-          log_error("Received an interrupt");
-          ret = FAILURE;
-          break;
-        case TIMER:
-          log_error("Timer expired");
-          break;
-        case REVOKED:
-          log_error("Domain revoked");
-          ret = FAILURE;
-          break;
-        default:
-          log_error("weird value %d", errno);
-          break;
-      }
-    } while(ret == SUCCESS);
-    log_error("All done? %d", errno);
+    //This is the first thread, let's pin it.
+    pin_and_run(enclave, 0);
     return 0;
 }
 
-int ecall_thread_start(void) {
-    return sgx_ecall(ECALL_THREAD_START, NULL);
+int ecall_thread_start(int core_id) {
+    pin_and_run(&g_pal_enclave, core_id);
+    //return sgx_ecall(ECALL_THREAD_START, NULL);
 }
 
 int ecall_thread_reset(void) {
-    return sgx_ecall(ECALL_THREAD_RESET, NULL);
+    //TODO(aghosn): figure out what to do.
+    //return sgx_ecall(ECALL_THREAD_RESET, NULL);
 }

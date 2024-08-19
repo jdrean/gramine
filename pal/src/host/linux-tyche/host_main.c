@@ -509,6 +509,7 @@ static int initialize_enclave(struct pal_enclave* enclave, const char* manifest_
                 gs->heap_min = (void*)enclave_heap_min;
                 gs->heap_max = (void*)pal_area->addr;
                 gs->thread = NULL;
+                gs->core_id = (uint64_t) t;
 
                 if (backend_td_config_vcpu(&(enclave->domain), t, GUEST_RSP,
                       stack_areas[t].addr + ENCLAVE_STACK_SIZE) != SUCCESS) {

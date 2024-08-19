@@ -62,8 +62,8 @@ void handle_ecall(capa_index_t ret_index, void* ecall_args, void* enclave_base_a
     SET_ENCLAVE_TCB(untrusted_area_cache.in_use, 0UL);
 
 
-    int64_t t = 0;
-    if (__atomic_compare_exchange_n(&g_enclave_start_called, &t, 1, /*weak=*/false,
+    int64_t t = GET_ENCLAVE_TCB(core_id);
+    if (t == 0 && __atomic_compare_exchange_n(&g_enclave_start_called, &t, 1, /*weak=*/false,
                                     __ATOMIC_SEQ_CST, __ATOMIC_RELAXED)) {
         // ENCLAVE_START not yet called, so only valid ecall is ENCLAVE_START.
         /*if (ecall_index != ECALL_ENCLAVE_START) {

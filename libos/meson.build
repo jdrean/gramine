@@ -17,6 +17,10 @@ if host_machine.cpu_family() == 'x86_64'
     cflags_libos += ['-mfxsr', '-mxsave']
 endif
 
+if tyche
+  cflags_libos += '-DNO_RFLAGS=1'
+endif
+
 subdir('include')
 subdir('src')
 

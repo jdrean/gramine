@@ -159,7 +159,7 @@ out:
     return ret;
 }
 
-void map_tcs(unsigned int tid) {
+int map_tcs(unsigned int tid) {
     while (true) {
         spinlock_lock(&g_enclave_thread_map_lock);
         for (size_t i = 0; i < g_enclave_thread_num; i++) {
@@ -170,7 +170,7 @@ void map_tcs(unsigned int tid) {
                 pal_get_host_tcb()->tcs = g_enclave_thread_map[i].tcs;
                 ((struct enclave_dbginfo*)DBGINFO_ADDR)->thread_tids[i] = tid;
                 spinlock_unlock(&g_enclave_thread_map_lock);
-                return;
+                return i;
             }
         }
 
@@ -190,6 +190,7 @@ void map_tcs(unsigned int tid) {
          */
         CPU_RELAX();
     }
+    return 0;
 }
 
 void unmap_my_tcs(void) {
@@ -249,7 +250,7 @@ int pal_thread_init(void* tcbptr) {
     }
 
     int tid = DO_SYSCALL(gettid);
-    map_tcs(tid); /* updates tcb->tcs */
+    int core_id = map_tcs(tid); /* updates tcb->tcs */
 
     if (!tcb->tcs) {
         log_error("There are no available TCS pages left for a new thread. Please try to increase"
@@ -268,7 +269,7 @@ int pal_thread_init(void* tcbptr) {
     __atomic_store_n(tcb->start_status_ptr, 0, __ATOMIC_RELAXED);
 
     /* not-first (child) thread, start it */
-    ecall_thread_start();
+    ecall_thread_start(core_id);
 
     unmap_my_tcs();
     ret = 0;

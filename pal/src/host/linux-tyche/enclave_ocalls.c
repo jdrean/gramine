@@ -67,14 +67,11 @@ static long tyche_ocall(uint64_t code, void* ocall_args)
   ocall->args = ocall_args;
   ocall->ocall_num = code;
   __asm__(
-    "movq %1, %%rdi\n\t"
-    "movq $8, %%rax\n\t"
+    "movq $23, %%rax\n\t"
     "vmcall\n\t"
-    "movq %%rdi, %0\n\t"
-    : "=rm"(retidx)
-    : "rm"(retidx)
-    : "memory", "rax", "rdi");
-  SET_ENCLAVE_TCB(exit_target, retidx);
+    :
+    :
+    : "memory", "rax");
   return ocall->ret;
 }
 
@@ -210,6 +207,8 @@ noreturn void ocall_exit(int exitcode, int is_exitgroup) {
     //     case should be already catched by enclave_entry.S).
     while (true) {
         sgx_ocall(OCALL_EXIT, ocall_exit_args);
+        //TODO(aghosn): reset the thread.
+        pal_start_thread();
     }
 }
 
@@ -488,25 +487,16 @@ int ocall_close(int fd) {
 
 ssize_t ocall_read(int fd, void* buf, size_t count) {
     ssize_t retval = 0;
-    void* obuf = NULL;
     struct ocall_read* ocall_read_args;
     void* untrusted_buf;
     bool need_munmap = false;
+    count = (count < MAX_UNTRUSTED_STACK_BUF)? count : MAX_UNTRUSTED_STACK_BUF;
 
     void* old_ustack = sgx_prepare_ustack();
-    if (count > MAX_UNTRUSTED_STACK_BUF) {
-        retval = ocall_mmap_untrusted_cache(ALLOC_ALIGN_UP(count), &obuf, &need_munmap);
-        if (retval < 0) {
-            sgx_reset_ustack(old_ustack);
-            return retval;
-        }
-        untrusted_buf = obuf;
-    } else {
-        untrusted_buf = sgx_alloc_on_ustack(count);
-        if (!untrusted_buf) {
-            retval = -EPERM;
-            goto out;
-        }
+    untrusted_buf = sgx_alloc_on_ustack(count);
+    if (!untrusted_buf) {
+        retval = -EPERM;
+        goto out;
     }
 
     ocall_read_args = sgx_alloc_on_ustack_aligned(sizeof(*ocall_read_args),
@@ -540,8 +530,6 @@ ssize_t ocall_read(int fd, void* buf, size_t count) {
 
 out:
     sgx_reset_ustack(old_ustack);
-    if (obuf)
-        ocall_munmap_untrusted_cache(obuf, ALLOC_ALIGN_UP(count), need_munmap);
     return retval;
 }
 
@@ -618,12 +606,11 @@ ssize_t ocall_pread(int fd, void* buf, size_t count, off_t offset) {
     void* untrusted_buf;
     bool need_munmap = false;
     size_t buff_size = (count < MAX_UNTRUSTED_STACK_BUF)? count : MAX_UNTRUSTED_STACK_BUF;
-    size_t total_read = 0;
-    off_t off = offset;
 
     void* old_ustack = sgx_prepare_ustack();
     ocall_pread_args = sgx_alloc_on_ustack_aligned(sizeof(*ocall_pread_args),
                                                    alignof(*ocall_pread_args));
+
     if (!ocall_pread_args) {
         retval = -EPERM;
         goto out;
@@ -633,87 +620,33 @@ ssize_t ocall_pread(int fd, void* buf, size_t count, off_t offset) {
         retval = -EPERM;
         goto out;
     }
+
     // Setup the initial values.
     COPY_VALUE_TO_UNTRUSTED(&ocall_pread_args->fd, fd);
-    //COPY_VALUE_TO_UNTRUSTED(&ocall_pread_args->count, count);
-    //COPY_VALUE_TO_UNTRUSTED(&ocall_pread_args->offset, offset);
-    COPY_VALUE_TO_UNTRUSTED(&ocall_pread_args->buf, untrusted_buf);
-
-    while(total_read < count) {
-      size_t bytes_to_read = ((count - total_read) > MAX_UNTRUSTED_STACK_BUF)? 
-                        MAX_UNTRUSTED_STACK_BUF : 
-                        (count - total_read);
-      COPY_VALUE_TO_UNTRUSTED(&ocall_pread_args->count, bytes_to_read);
-      COPY_VALUE_TO_UNTRUSTED(&ocall_pread_args->offset, off);
-      retval = sgx_exitless_ocall(OCALL_PREAD, ocall_pread_args);
-      if (retval < 0 && retval != -EAGAIN && retval != -EWOULDBLOCK && retval != -EBADF &&
-            retval != -EINTR && retval != -EINVAL && retval != -EIO && retval != -EISDIR &&
-            retval != -ENXIO && retval != -EOVERFLOW && retval != -ESPIPE) {
-        retval = -EPERM;
-        goto out;
-      }
-      if (retval > 0) {
-        if ((size_t)retval > count) {
-            retval = -EPERM;
-            goto out;
-        }
-        if (!sgx_copy_to_enclave(buf+total_read, buff_size, untrusted_buf, retval)) {
-            retval = -EPERM;
-            goto out;
-        }
-      }
-      total_read += retval;
-      off += retval;
-    }
-    
-    sgx_reset_ustack(old_ustack);
-    return total_read;
-
-    /*if (count > MAX_UNTRUSTED_STACK_BUF) {
-        retval = ocall_mmap_untrusted_cache(ALLOC_ALIGN_UP(count), &obuf, &need_munmap);
-        if (retval < 0) {
-            sgx_reset_ustack(old_ustack);
-            return retval;
-        }
-        untrusted_buf = obuf;
-    } else {
-        untrusted_buf = sgx_alloc_on_ustack(count);
-        if (!untrusted_buf) {
-            retval = -EPERM;
-            goto out;
-        }
-    }
-
-
-    COPY_VALUE_TO_UNTRUSTED(&ocall_pread_args->fd, fd);
-    COPY_VALUE_TO_UNTRUSTED(&ocall_pread_args->count, count);
+    COPY_VALUE_TO_UNTRUSTED(&ocall_pread_args->count, buff_size);
     COPY_VALUE_TO_UNTRUSTED(&ocall_pread_args->offset, offset);
     COPY_VALUE_TO_UNTRUSTED(&ocall_pread_args->buf, untrusted_buf);
-
     retval = sgx_exitless_ocall(OCALL_PREAD, ocall_pread_args);
-
     if (retval < 0 && retval != -EAGAIN && retval != -EWOULDBLOCK && retval != -EBADF &&
-            retval != -EINTR && retval != -EINVAL && retval != -EIO && retval != -EISDIR &&
-            retval != -ENXIO && retval != -EOVERFLOW && retval != -ESPIPE) {
-        retval = -EPERM;
-    }
-
-    if (retval > 0) {
-        if ((size_t)retval > count) {
-            retval = -EPERM;
-            goto out;
-        }
-        if (!sgx_copy_to_enclave(buf, count, untrusted_buf, retval)) {
-            retval = -EPERM;
-        }
-    }*/
+           retval != -EINTR && retval != -EINVAL && retval != -EIO && retval != -EISDIR &&
+           retval != -ENXIO && retval != -EOVERFLOW && retval != -ESPIPE) {
+       retval = -EPERM;
+       goto out;
+     }
+     if (retval > 0) {
+       if ((size_t)retval > buff_size) {
+           retval = -EPERM;
+           goto out;
+       }
+       if (!sgx_copy_to_enclave(buf, buff_size, untrusted_buf, retval)) {
+           retval = -EPERM;
+           goto out;
+       }
+     }
 
 out:
     sgx_reset_ustack(old_ustack);
-    /*if (obuf)
-        ocall_munmap_untrusted_cache(obuf, ALLOC_ALIGN_UP(count), need_munmap);*/
     return retval;
-    
 }
 
 ssize_t ocall_pwrite(int fd, const void* buf, size_t count, off_t offset) {
