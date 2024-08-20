@@ -15,6 +15,7 @@
 #include "pal_ecall_types.h"
 #include "pal_topology.h"
 #include "sgx_arch.h"
+#include "pal_rpc_queue.h"
 
 #define _GNU_SOURCE
 #include <sched.h>
@@ -41,7 +42,7 @@ shmem_info_t* init_shinfo(tyche_domain_t* domain, size_t nb_threads, uint64_t ad
 
   /* Compute how much we need.*/
   uint64_t s_estart = 0, e_estart = 0, s_ustacks = 0,
-           e_ustacks = 0, s_bump = 0, s_mmap = 0;
+           e_ustacks = 0, s_bump = 0, s_mmap = 0, s_rpc_queue = 0;
 
   /* Summary of the shared state. */
   shinfo = malloc(sizeof(shmem_info_t));
@@ -73,6 +74,10 @@ shmem_info_t* init_shinfo(tyche_domain_t* domain, size_t nb_threads, uint64_t ad
   s_mmap = shinfo->raw_size;
   shinfo->raw_size += EXTRA_MMAP_PAGES * PT_PAGE_SIZE;
 
+  /* Add the size of rcp queue*/
+  s_rpc_queue = shinfo->raw_size;
+  shinfo->raw_size += ALIGN_UP(sizeof(rpc_queue_t), PRESET_PAGESIZE);
+
   /* Now allocate it for the domain.*/
   if (backend_td_mmap(domain, (void*) addr, shinfo->raw_size, PROT_READ | PROT_WRITE,
         MAP_FIXED_NOREPLACE | MAP_SHARED) != SUCCESS) {
@@ -90,6 +95,7 @@ shmem_info_t* init_shinfo(tyche_domain_t* domain, size_t nb_threads, uint64_t ad
   shinfo->mmaps.start = (char*) (shinfo->raw_start + s_mmap);
   shinfo->mmaps.size = EXTRA_MMAP_PAGES * PT_PAGE_SIZE;
   shinfo->mmaps.next_free = shinfo->mmaps.start;
+  shinfo->rpc_queue = (void*) (shinfo->raw_start + s_rpc_queue);
 
   /* Directly register the region so we do not have to worry about it anymore. */
   if (backend_td_register_region(domain, (usize)shinfo->raw_start,

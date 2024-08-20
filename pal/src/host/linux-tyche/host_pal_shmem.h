@@ -29,6 +29,8 @@ typedef struct shmem_info_t {
     shmem_buffer_t bump;
     /* Mmap allocator */
     shmem_buffer_t mmaps;
+    /* The rpc queue memory region. */
+    void* rpc_queue;
 } shmem_info_t;
 
 shmem_info_t* init_shinfo(tyche_domain_t* domain, size_t nb_threads, uint64_t addr);

@@ -867,10 +867,11 @@ static int rpc_thread_loop(void* arg) {
 }
 
 int start_rpc(size_t threads_cnt) {
-    g_rpc_queue = (rpc_queue_t*)DO_SYSCALL(mmap, NULL,
+    /*g_rpc_queue = (rpc_queue_t*)DO_SYSCALL(mmap, NULL,
                                            ALIGN_UP(sizeof(rpc_queue_t), PRESET_PAGESIZE),
                                            PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE,
-                                           -1, 0);
+                                           -1, 0);*/
+    g_rpc_queue = (rpc_queue_t*) (get_shmem_info()->rpc_queue);
     if (IS_PTR_ERR(g_rpc_queue))
         return -ENOMEM;
 
