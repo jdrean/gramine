@@ -39,15 +39,12 @@ entry_t* alloc(void* ptr) {
 }
 
 static int find_paddr(addr_t vaddr, addr_t* phys) {
-  domain_mslot_t* slot = NULL;
   assert(phys != NULL);
-  dll_foreach(&(g_pt_mapper.domain->mmaps), slot, list) {
-    if (slot->virtoffset <= vaddr &&
-        ((slot->virtoffset + slot->size) > vaddr)) {
-      *phys = (vaddr - slot->virtoffset) + slot->physoffset;
-      return SUCCESS;
-    }
+  if (backend_td_virt_to_phys(g_pt_mapper.domain, vaddr, phys) != SUCCESS) {
+    goto failure;
   }
+  return SUCCESS;
+failure:
   log_error("Unable to find phys address for %llx", vaddr);
   return FAILURE;
 }

@@ -206,34 +206,24 @@ int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token, unsigned long
     /* computing the number of pages required for the page tables. */
     unsigned long pts_pages_size = compute_pages(request_mmap_addr, request_mmap_size) * PAGE_SIZE;
     /* Let the address space be filed by the actual regions before doing our mmap.*/
-    for (uint64_t vaddr = request_mmap_addr;
-        vaddr < end;
-        vaddr += MAX_SLOT_SIZE) {
-      uint64_t size = ((vaddr + MAX_SLOT_SIZE) < (end))? MAX_SLOT_SIZE : end - vaddr;
-
-      /* Allocate the required memory (TODO: figure out the page tables)*/
-      if (backend_td_mmap(secs->domain, (void*) vaddr, size,
-            PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED_NOREPLACE | MAP_SHARED) != SUCCESS) {
-        log_error("Unable to allocate the memory : %s", unix_strerror(errno));
-        return -errno;
-      }
-
-      uint64_t addr = (uint64_t) secs->domain->mmaps.tail->virtoffset;
-      /*DO_SYSCALL(mmap, request_mmap_addr, request_mmap_size,
-                               PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED_NOREPLACE | MAP_SHARED,
-                               g_isgx_device, 0);*/
-      if (IS_PTR_ERR(addr)) {
-        int ret = PTR_TO_ERR(addr);
-        if (ret == -EPERM) {
-            log_error("Permission denied on mapping enclave. "
-                      "You may need to set sysctl vm.mmap_min_addr to zero.");
-        }
-
-        log_error("Allocation of EPC memory failed: %s", unix_strerror(ret));
-        return ret;
-      }
-      assert(addr == vaddr);
+    if (backend_td_mmap(secs->domain, (void*) request_mmap_addr, request_mmap_size,
+          PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED_NOREPLACE | MAP_SHARED) != SUCCESS) {
+      log_error("Unable to allocate the memory: %s", unix_strerror(errno));
+      return -errno;
     }
+
+    uint64_t addr = (uint64_t) secs->domain->mmaps.tail->virtoffset;
+    if (IS_PTR_ERR(addr)) {
+      int ret = PTR_TO_ERR(addr);
+      if (ret == -EPERM) {
+          log_error("Permission denied on mapping enclave. "
+                    "You may need to set sysctl vm.mmap_min_addr to zero.");
+      }
+
+      log_error("Allocation of EPC memory failed: %s", unix_strerror(ret));
+      return ret;
+    }
+    assert(addr == request_mmap_addr);
 
     /* Allocate shared memory*/
     if (init_shinfo(secs->domain, nb_threads, end) == NULL) {
