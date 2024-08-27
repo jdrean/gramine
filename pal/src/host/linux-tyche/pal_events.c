@@ -29,7 +29,7 @@ static int alloc_untrusted_futex_word(uint64_t** out_addr) {
     static_assert(PAGE_SIZE % sizeof(uint64_t) == 0, "required by the check below");
     if (g_untrusted_page_next_entry % PAGE_SIZE == 0) {
         void* untrusted_page;
-        int ret = ocall_mmap_untrusted(&untrusted_page, PAGE_SIZE, PROT_READ | PROT_WRITE,
+        int ret = ocall_futex_mmap_untrusted(&untrusted_page, PAGE_SIZE, PROT_READ | PROT_WRITE,
                                        MAP_ANONYMOUS | MAP_PRIVATE, /*fd=*/-1, /*offset=*/0);
         if (ret < 0) {
             spinlock_unlock(&g_untrusted_page_lock);

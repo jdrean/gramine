@@ -22,6 +22,7 @@
 
 #define BUMP_BUFFER_PAGES 20
 #define EXTRA_MMAP_PAGES 50
+#define FUTEX_MMAP_PAGES 1
 
 /* The shared state layout info.*/
 shmem_info_t* shinfo = NULL;
@@ -97,12 +98,37 @@ shmem_info_t* init_shinfo(tyche_domain_t* domain, size_t nb_threads, uint64_t ad
   shinfo->mmaps.next_free = shinfo->mmaps.start;
   shinfo->rpc_queue = (void*) (shinfo->raw_start + s_rpc_queue);
 
+  /* Allocate space for the futexes. Put it directly after the rest*/
+  shinfo->futex_mmap.start = (char*) mmap(shinfo->raw_size + shinfo->raw_start,
+      FUTEX_MMAP_PAGES * PRESET_PAGESIZE, PROT_READ| PROT_WRITE,
+      MAP_PRIVATE | MAP_FIXED_NOREPLACE | MAP_POPULATE | MAP_LOCKED | MAP_ANONYMOUS,
+      -1, 0);
+  /// Map failed.
+  if (shinfo->futex_mmap.start == ((void*) -1)) {
+    log_error("Unable to map the futex mmap");
+    return NULL;
+  }
+  assert(shinfo->futex_mmap.start == (shinfo->raw_start + shinfo->raw_size));
+  shinfo->futex_mmap.size = FUTEX_MMAP_PAGES * PRESET_PAGESIZE;
+  shinfo->futex_mmap.next_free = shinfo->futex_mmap.start;
+
+  /* Register the area with the driver.*/
+  if (backend_td_register_mmap(domain, (void*) shinfo->futex_mmap.start,
+        (size_t) shinfo->futex_mmap.size) != SUCCESS) {
+    log_error("Unable to register the futex mmap region.");
+    return NULL;
+  }
+  // Update the raw size so it gets registered correctly.
+  shinfo->raw_size += FUTEX_MMAP_PAGES * PRESET_PAGESIZE;
+  assert(shinfo->bump.start + shinfo->bump.size <= shinfo->mmaps.start);
+
   /* Directly register the region so we do not have to worry about it anymore. */
   if (backend_td_register_region(domain, (usize)shinfo->raw_start,
         shinfo->raw_size, MEM_READ | MEM_WRITE | MEM_SUPER, SHARED) != SUCCESS) {
    log_error("Unable to register the shared memory region."); 
    return NULL;
   }
+
   return shinfo;
 }
 
@@ -111,16 +137,23 @@ shmem_info_t* get_shmem_info(void) {
   return shinfo;
 }
 
-void* shinfo_mmap(size_t size) {
+static void* intern_mmap(shmem_buffer_t* buff, size_t size) {
   assert(size % PT_PAGE_SIZE == 0);
-  if ((shinfo->mmaps.next_free + size) > 
-      (shinfo->mmaps.start + shinfo->mmaps.size)) {
+  if ((buff->next_free + size) > (buff->start + buff->size)) {
     log_error("Shinfo running out of mmaps!");
     return NULL;
   }
-  void* ptr = (void*) shinfo->mmaps.next_free;
-  shinfo->mmaps.next_free += size;
+  void* ptr = (void*) buff->next_free;
+  buff->next_free += size;
   return ptr;
+}
+
+void* shinfo_mmap(size_t size) {
+  return intern_mmap(&(shinfo->mmaps), size);
+}
+
+void* shinfo_futex_mmap(size_t size) {
+  return intern_mmap(&(shinfo->futex_mmap), size);
 }
 
 void * alloc_into_shinfo(size_t size) {
@@ -233,11 +266,17 @@ failure:
   return NULL;
 }
 
+int is_within_allocated_bump(uint64_t addr) {
+  if (shinfo == NULL)
+    return 0;
+  return (shinfo->bump.start <= addr && addr < shinfo->bump.next_free);
+}
+
 void tyche_pin_to_core(int core_id) {
   // Figure out sched-affinity.
   int tid = 0;
   cpu_set_t mask;
-  assert(core_id < 4);
+  //assert(core_id < 4);
 
   // Clear the CPU set (initialize all bits to 0)
   memset(&mask, 0, sizeof(cpu_set_t));

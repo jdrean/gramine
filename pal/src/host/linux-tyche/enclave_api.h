@@ -7,6 +7,7 @@
 
 /* Used in tyche to pass ocall arguments. */
 typedef struct thread_ocall_t {
+    int core_id;
     int ocall_num;
     void* args;
     int ret;

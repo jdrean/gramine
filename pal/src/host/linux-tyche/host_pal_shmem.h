@@ -31,13 +31,17 @@ typedef struct shmem_info_t {
     shmem_buffer_t mmaps;
     /* The rpc queue memory region. */
     void* rpc_queue;
+    /* Mmap region for futexes. */
+    shmem_buffer_t futex_mmap;
 } shmem_info_t;
 
 shmem_info_t* init_shinfo(tyche_domain_t* domain, size_t nb_threads, uint64_t addr);
 shmem_info_t* get_shmem_info(void);
 void* shinfo_mmap(size_t size);
+void* shinfo_futex_mmap(size_t size);
 void* alloc_into_shinfo(size_t size);
 void* copy_into_shinfo(void* src, size_t size);
 char** copy_strarray_into_shinfo(char** arr, size_t size);
 struct pal_topo_info* copy_topology_into_shinfo(struct pal_topo_info* topo);
+int is_within_allocated_bump(uint64_t addr);
 void tyche_pin_to_core(int core_id);

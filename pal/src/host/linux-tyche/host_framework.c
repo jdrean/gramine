@@ -517,6 +517,10 @@ int edmm_supported_by_driver(bool* out_supported) {
 int init_enclave(sgx_arch_secs_t* secs, sgx_sigstruct_t* sigstruct, sgx_arch_token_t* token) {
   //TODO(aghosn) this is the commit.
   // we're still missing shared memory regions.
+  // Make sure we are on core 0 to commit the domain.
+  // TODO(aghosn) eventually put that inside the manifest configuration.
+  tyche_pin_to_core(0);
+  shmem_info_t* shinfo = get_shmem_info();
   assert(secs->domain != NULL);
   if (backend_td_commit(secs->domain) != SUCCESS) {
     log_error("Error comitting domain.");

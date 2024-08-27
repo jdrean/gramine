@@ -63,6 +63,7 @@ static long tyche_ocall(uint64_t code, void* ocall_args)
 {
   thread_ocall_t * ocall = (thread_ocall_t*) GET_ENCLAVE_TCB(ustack_top);
   capa_index_t retidx = (capa_index_t) GET_ENCLAVE_TCB(exit_target);
+  ocall->core_id = GET_ENCLAVE_TCB(core_id);
   ocall->ret = 0;
   ocall->args = ocall_args;
   ocall->ocall_num = code;
@@ -212,7 +213,9 @@ noreturn void ocall_exit(int exitcode, int is_exitgroup) {
     }
 }
 
-int ocall_mmap_untrusted(void** addrptr, size_t size, int prot, int flags, int fd, off_t offset) {
+static int internal_ocall_mmap_untrusted(bool futex, void** addrptr, size_t size,
+    int prot, int flags, int fd, off_t offset) {
+    uint64_t code = (futex)? OCALL_FUTEX_MMAP_UNTRUSTED : OCALL_MMAP_UNTRUSTED;
     int retval = 0;
     struct ocall_mmap_untrusted* ocall_mmap_args;
     void* old_ustack = sgx_prepare_ustack();
@@ -247,7 +250,7 @@ int ocall_mmap_untrusted(void** addrptr, size_t size, int prot, int flags, int f
     COPY_VALUE_TO_UNTRUSTED(&ocall_mmap_args->offset, offset);
 
     do {
-        retval = sgx_exitless_ocall(OCALL_MMAP_UNTRUSTED, ocall_mmap_args);
+        retval = sgx_exitless_ocall(code, ocall_mmap_args);
     } while (retval == -EINTR);
 
     if (retval < 0) {
@@ -278,6 +281,15 @@ int ocall_mmap_untrusted(void** addrptr, size_t size, int prot, int flags, int f
 
     sgx_reset_ustack(old_ustack);
     return 0;
+}
+
+int ocall_mmap_untrusted(void** addrptr, size_t size, int prot, int flags, int fd, off_t offset) {
+  return internal_ocall_mmap_untrusted(false, addrptr, size, prot, flags, fd, offset);
+}
+
+int ocall_futex_mmap_untrusted(void** addrptr, size_t size, int prot, int flags,
+    int fd, off_t offset) {
+  return internal_ocall_mmap_untrusted(true, addrptr, size, prot, flags, fd, offset);
 }
 
 int ocall_munmap_untrusted(const void* addr, size_t size) {

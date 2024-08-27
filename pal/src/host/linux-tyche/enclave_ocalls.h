@@ -18,6 +18,10 @@ int ocall_mmap_untrusted(void** addrptr, size_t size, int prot, int flags, int f
 
 int ocall_munmap_untrusted(const void* addr, size_t size);
 
+// TODO(aghosn): added this for futexes.
+int ocall_futex_mmap_untrusted(void** addrptr, size_t size, int prot, int flags, int fd,
+                               off_t offset);
+
 int ocall_cpuid(unsigned int leaf, unsigned int subleaf, unsigned int values[static 4]);
 
 int ocall_open(const char* pathname, int flags, unsigned short mode);

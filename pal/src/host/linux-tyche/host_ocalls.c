@@ -97,11 +97,26 @@ static long sgx_ocall_mmap_untrusted(void* args) {
       addr = shinfo_mmap(ocall_mmap_args->size);
     }
 
-    if (IS_PTR_ERR(addr))
+    if (IS_PTR_ERR(addr) || addr == NULL)
       return PTR_TO_ERR(addr);
 
     ocall_mmap_args->addr = addr;
     return 0;
+}
+
+static long sgx_ocall_futex_mmap_untrusted(void *args) {
+  struct ocall_mmap_untrusted* ocall_mmap_args = args;
+  void * addr;
+  assert(ocall_mmap_args->prot != PROT_NONE);
+  assert(ocall_mmap_args->fd == -1);
+  assert(ocall_mmap_args->offset == 0);
+  assert(ocall_mmap_args->addr == NULL);
+  addr = shinfo_futex_mmap(ocall_mmap_args->size);
+  if (IS_PTR_ERR(addr) || addr == NULL) {
+    return -ENOMEM;
+  }
+  ocall_mmap_args->addr = addr;
+  return 0;
 }
 
 static long sgx_ocall_munmap_untrusted(void* args) {
@@ -755,6 +770,7 @@ sgx_ocall_fn_t ocall_table[OCALL_NR] = {
     [OCALL_EXIT]                     = sgx_ocall_exit,
     [OCALL_MMAP_UNTRUSTED]           = sgx_ocall_mmap_untrusted,
     [OCALL_MUNMAP_UNTRUSTED]         = sgx_ocall_munmap_untrusted,
+    [OCALL_FUTEX_MMAP_UNTRUSTED]     = sgx_ocall_futex_mmap_untrusted,
     [OCALL_CPUID]                    = sgx_ocall_cpuid,
     [OCALL_OPEN]                     = sgx_ocall_open,
     [OCALL_CLOSE]                    = sgx_ocall_close,
@@ -918,6 +934,7 @@ void dispatch_tyche_ocall(int t)
   shmem_info_t* shinfo = get_shmem_info();
   thread_ocall_t * ocall =
     (thread_ocall_t*) ((shinfo->ustacks + (t + 1) * USTACK_DEFAULT_SIZE) - sizeof(thread_ocall_t));
+  assert(ocall->core_id == t);
   ocall->ret = ocall_table[ocall->ocall_num](ocall->args);
   ocall->ocall_num = 0;
   ocall->args = NULL;
