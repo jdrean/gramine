@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <linux/mman.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include "api.h"
 #include "backend.h"
 #include "host_pal_shmem.h"
@@ -21,11 +22,21 @@
 #include <sched.h>
 
 #define BUMP_BUFFER_PAGES 20
-#define EXTRA_MMAP_PAGES 50
-#define FUTEX_MMAP_PAGES 1
+#define EXTRA_MMAP_PAGES 56
+#define FUTEX_MMAP_PAGES 8
 
 /* The shared state layout info.*/
 shmem_info_t* shinfo = NULL;
+
+
+static int init_shmem(shmem_buffer_t* buff, size_t nb_pages) {
+  buff->bitmap = calloc((nb_pages +7)/8, sizeof(uint8_t));
+  if (buff->bitmap == NULL) {
+    return -1;
+  }
+  memset(buff->bitmap, 0, (nb_pages + 7) / 8 * sizeof(uint8_t));
+  return 0;
+}
 
 /* we compute the shared memory size with the following layout:
  * 1. The ecall_enclave_start arguments:
@@ -42,8 +53,7 @@ shmem_info_t* shinfo = NULL;
 shmem_info_t* init_shinfo(tyche_domain_t* domain, size_t nb_threads, uint64_t addr) {
 
   /* Compute how much we need.*/
-  uint64_t s_estart = 0, e_estart = 0, s_ustacks = 0,
-           e_ustacks = 0, s_bump = 0, s_mmap = 0, s_rpc_queue = 0;
+  uint64_t s_estart = 0, s_ustacks = 0, s_bump = 0, s_mmap = 0, s_rpc_queue = 0;
 
   /* Summary of the shared state. */
   shinfo = malloc(sizeof(shmem_info_t));
@@ -57,14 +67,12 @@ shmem_info_t* init_shinfo(tyche_domain_t* domain, size_t nb_threads, uint64_t ad
   /* The enclave start arguments. */
   shinfo->raw_size += nb_threads * (uint64_t) sizeof(struct ecall_enclave_start);
   /* memorize the end.*/
-  e_estart = shinfo->raw_size;
   shinfo->raw_size = ALIGN_UP(shinfo->raw_size, PT_PAGE_SIZE);
   assert(shinfo->raw_size % PT_PAGE_SIZE == 0);
   s_ustacks = shinfo->raw_size;
 
   shinfo->raw_size += nb_threads * USTACK_DEFAULT_SIZE;
   assert((shinfo->raw_size % PT_PAGE_SIZE) == 0);
-  e_ustacks = shinfo->raw_size;
   s_bump = shinfo->raw_size;
 
   /* Add the size of the bump.*/
@@ -95,11 +103,12 @@ shmem_info_t* init_shinfo(tyche_domain_t* domain, size_t nb_threads, uint64_t ad
   shinfo->bump.next_free = shinfo->bump.start;
   shinfo->mmaps.start = (char*) (shinfo->raw_start + s_mmap);
   shinfo->mmaps.size = EXTRA_MMAP_PAGES * PT_PAGE_SIZE;
-  shinfo->mmaps.next_free = shinfo->mmaps.start;
+  assert(init_shmem(&(shinfo->mmaps), EXTRA_MMAP_PAGES) == 0);
+
   shinfo->rpc_queue = (void*) (shinfo->raw_start + s_rpc_queue);
 
   /* Allocate space for the futexes. Put it directly after the rest*/
-  shinfo->futex_mmap.start = (char*) mmap(shinfo->raw_size + shinfo->raw_start,
+  shinfo->futex_mmap.start = (char*) mmap((void*) (shinfo->raw_size + shinfo->raw_start),
       FUTEX_MMAP_PAGES * PRESET_PAGESIZE, PROT_READ| PROT_WRITE,
       MAP_PRIVATE | MAP_FIXED_NOREPLACE | MAP_POPULATE | MAP_LOCKED | MAP_ANONYMOUS,
       -1, 0);
@@ -108,9 +117,9 @@ shmem_info_t* init_shinfo(tyche_domain_t* domain, size_t nb_threads, uint64_t ad
     log_error("Unable to map the futex mmap");
     return NULL;
   }
-  assert(shinfo->futex_mmap.start == (shinfo->raw_start + shinfo->raw_size));
+  assert(shinfo->futex_mmap.start == (char*) (shinfo->raw_start + shinfo->raw_size));
   shinfo->futex_mmap.size = FUTEX_MMAP_PAGES * PRESET_PAGESIZE;
-  shinfo->futex_mmap.next_free = shinfo->futex_mmap.start;
+  assert(init_shmem(&(shinfo->futex_mmap), FUTEX_MMAP_PAGES) == 0);
 
   /* Register the area with the driver.*/
   if (backend_td_register_mmap(domain, (void*) shinfo->futex_mmap.start,
@@ -137,23 +146,97 @@ shmem_info_t* get_shmem_info(void) {
   return shinfo;
 }
 
-static void* intern_mmap(shmem_buffer_t* buff, size_t size) {
-  assert(size % PT_PAGE_SIZE == 0);
-  if ((buff->next_free + size) > (buff->start + buff->size)) {
-    log_error("Shinfo running out of mmaps!");
-    return NULL;
+
+// —————————————————————— Internal mmap implementation —————————————————————— //
+static void set_bit(shmem_buffer_t* buff, size_t bit_index) {
+    buff->bitmap[bit_index / 8] |= (1 << (bit_index % 8));
+}
+
+static void clear_bit(shmem_buffer_t* buff, size_t bit_index) {
+    buff->bitmap[bit_index / 8] &= ~(1 << (bit_index % 8));
+}
+
+static bool is_bit_set(shmem_buffer_t* buff, size_t bit_index) {
+    return buff->bitmap[bit_index / 8] & (1 << (bit_index % 8));
+}
+
+static void* memory_mmap(shmem_buffer_t* buff, size_t size) {
+    size_t pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE; // Round up to the nearest page count
+    size_t contiguous_pages = 0;
+    size_t start_page = 0;
+
+    // Find a contiguous range of free pages
+    for (size_t i = 0; i < (buff->size / PAGE_SIZE); i++) {
+        if (!is_bit_set(buff, i)) {
+            if (contiguous_pages == 0) {
+                start_page = i;
+            }
+            contiguous_pages++;
+            if (contiguous_pages == pages_needed) {
+                break;
+            }
+        } else {
+            contiguous_pages = 0;
+        }
+    }
+
+    if (contiguous_pages < pages_needed) {
+        return NULL; // Not enough contiguous memory
+    }
+
+    // Mark the pages as allocated
+    for (size_t i = start_page; i < start_page + pages_needed; i++) {
+        set_bit(buff, i);
+    }
+    void* ptr = buff->start + (start_page * PAGE_SIZE);
+    memset(ptr, 0, pages_needed * PAGE_SIZE);
+    return ptr;
+}
+
+static void memory_munmap(shmem_buffer_t* buff, void* ptr, size_t size) {
+    if (ptr == NULL || size == 0) return;
+
+    size_t offset = (char*)ptr - buff->start;
+    size_t start_page = offset / PAGE_SIZE;
+    size_t pages_to_free = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+
+    // Mark the pages as free
+    for (size_t i = start_page; i < start_page + pages_to_free; i++) {
+        clear_bit(buff, i);
+    }
+}
+
+// ———————————————————— The mmap API (normal and futex) ————————————————————— //
+
+void* shinfo_mmap(size_t size) {
+  void* ptr = memory_mmap(&(shinfo->mmaps), size);
+  if (ptr == NULL) {
+    log_error("Normal mmap failure");
   }
-  void* ptr = (void*) buff->next_free;
-  buff->next_free += size;
   return ptr;
 }
 
-void* shinfo_mmap(size_t size) {
-  return intern_mmap(&(shinfo->mmaps), size);
+void* shinfo_futex_mmap(size_t size) {
+  void* ptr = memory_mmap(&(shinfo->futex_mmap), size);
+  if (ptr == NULL) {
+    log_error("futex mmap failure");
+  }
+  return ptr;
 }
 
-void* shinfo_futex_mmap(size_t size) {
-  return intern_mmap(&(shinfo->futex_mmap), size);
+int shinfo_munmap(const void* addr, size_t size) {
+  uint64_t vaddr = (uint64_t) addr;
+  if (vaddr >= (uint64_t) shinfo->mmaps.start &&
+      (vaddr+size) <= (uint64_t)(shinfo->mmaps.start + shinfo->mmaps.size)) {
+    memory_munmap(&(shinfo->mmaps), (void*) vaddr, size);
+    return 0;
+  } else if (vaddr >= (uint64_t) shinfo->futex_mmap.start &&
+      (vaddr + size) <= (uint64_t) (shinfo->futex_mmap.start + shinfo->futex_mmap.size)) {
+    memory_munmap(&(shinfo->futex_mmap), (void*) vaddr, size);
+    return 0;
+  }
+  log_error("Munmap of unknown address ...");
+  return -1;
 }
 
 void * alloc_into_shinfo(size_t size) {
@@ -269,7 +352,7 @@ failure:
 int is_within_allocated_bump(uint64_t addr) {
   if (shinfo == NULL)
     return 0;
-  return (shinfo->bump.start <= addr && addr < shinfo->bump.next_free);
+  return ((uint64_t) shinfo->bump.start <= addr && addr < (uint64_t) shinfo->bump.next_free);
 }
 
 void tyche_pin_to_core(int core_id) {
@@ -288,7 +371,7 @@ void tyche_pin_to_core(int core_id) {
 
   // Set the CPU affinity for the current process
   if (sched_setaffinity(tid, sizeof(mask), &mask) == -1) {
-      perror("sched_setaffinity");
+      log_error("sched_setaffinity");
       exit(-1);
   }
 }

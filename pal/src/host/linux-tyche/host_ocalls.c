@@ -121,7 +121,11 @@ static long sgx_ocall_futex_mmap_untrusted(void *args) {
 
 static long sgx_ocall_munmap_untrusted(void* args) {
     struct ocall_munmap_untrusted* ocall_munmap_args = args;
-    DO_SYSCALL(munmap, ocall_munmap_args->addr, ocall_munmap_args->size);
+    if (shinfo_munmap(ocall_munmap_args->addr, ocall_munmap_args->size) < 0) {
+      log_error("Unable to munmap!");
+      // For now, we can attempt a standard munmap
+      DO_SYSCALL(munmap, ocall_munmap_args->addr, ocall_munmap_args->size);
+    }
     return 0;
 }
 

@@ -11,8 +11,9 @@
 #include "pal_ecall_types.h"
 typedef struct shmem_buffer_t {
     char* start;
-    char* next_free;
     size_t size;
+    char* next_free;
+    uint8_t* bitmap;
 } shmem_buffer_t;
 
 /* Shared memory info layout*/
@@ -39,6 +40,7 @@ shmem_info_t* init_shinfo(tyche_domain_t* domain, size_t nb_threads, uint64_t ad
 shmem_info_t* get_shmem_info(void);
 void* shinfo_mmap(size_t size);
 void* shinfo_futex_mmap(size_t size);
+int shinfo_munmap(const void* addr, size_t size);
 void* alloc_into_shinfo(size_t size);
 void* copy_into_shinfo(void* src, size_t size);
 char** copy_strarray_into_shinfo(char** arr, size_t size);
