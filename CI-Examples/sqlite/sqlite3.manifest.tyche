@@ -1,0 +1,54 @@
+[libos]
+entrypoint = "/usr/bin/sqlite3"
+
+[loader]
+log_level = "error"
+argv = [
+    "sqlite3",
+    "/db/test.db",
+]
+
+[loader.env]
+LD_LIBRARY_PATH = "/lib:/lib/x86_64-linux-gnu"
+PATH = "/usr/bin"
+HOME = "/"
+
+[loader.entrypoint]
+uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/libsysdb.so"
+sha256 = "ed66fe85361c8dc5f83540f91fc5c1ba867e7e8c07a1fc6d81b598799e41b34b"
+
+[fs]
+mounts = [
+    { path = "/lib", uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/runtime/glibc" },
+    { path = "/lib/x86_64-linux-gnu", uri = "file:/lib/x86_64-linux-gnu" },
+    { path = "/usr/bin/sqlite3", uri = "file:/usr/bin/sqlite3" },
+    { type = "encrypted", path = "/db/", uri = "file:db/", key_name = "default" },
+]
+
+[fs.insecure__keys]
+default = "ffeeddccbbaa99887766554433221100"
+
+[sgx]
+debug = true
+edmm_enable = false
+enclave_size = "256M"
+max_threads = 4
+trusted_files = [
+    { uri = "file:/usr/bin/sqlite3" },
+    { uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/runtime/glibc/" },
+    { uri = "file:/lib/x86_64-linux-gnu/" },
+    { uri = "file:scripts/" },
+    { uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/libsysdb.so" },
+]
+isvprodid = 0
+isvsvn = 0
+remote_attestation = "none"
+enable_stats = false
+use_exinfo = false
+
+[sgx.cpu_features]
+avx = "unspecified"
+avx512 = "unspecified"
+amx = "unspecified"
+mpx = "disabled"
+pkru = "disabled"
