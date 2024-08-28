@@ -1,0 +1,83 @@
+[libos]
+entrypoint = "/blender/blender"
+
+[loader]
+log_level = "error"
+insecure__use_cmdline_argv = true
+
+[loader.env]
+LD_LIBRARY_PATH = "/gramine_lib:/blender_lib:/usr//lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu"
+HOME = "/home/user"
+PWD = ""
+
+[loader.entrypoint]
+uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/libsysdb.so"
+sha256 = "ed66fe85361c8dc5f83540f91fc5c1ba867e7e8c07a1fc6d81b598799e41b34b"
+
+[[fs.mounts]]
+path = "/gramine_lib"
+uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/runtime/glibc"
+
+[[fs.mounts]]
+path = "/blender_lib"
+uri = "file:/home/dev/Documents/gramine/CI-Examples/blender/blender_dir/lib"
+
+[[fs.mounts]]
+path = "/lib/x86_64-linux-gnu"
+uri = "file:/lib/x86_64-linux-gnu"
+
+[[fs.mounts]]
+path = "/usr//lib/x86_64-linux-gnu"
+uri = "file:/usr//lib/x86_64-linux-gnu"
+
+[[fs.mounts]]
+path = "/data"
+uri = "file:/home/dev/Documents/gramine/CI-Examples/blender/data"
+
+[[fs.mounts]]
+path = "/blender"
+uri = "file:/home/dev/Documents/gramine/CI-Examples/blender/blender_dir"
+
+[sgx]
+debug = true
+edmm_enable = false
+enclave_size = "2048M"
+max_threads = 64
+allowed_files = [
+    "file:/home/dev/Documents/gramine/CI-Examples/blender/blender_dir/2.82/",
+    "file:/home/dev/Documents/gramine/CI-Examples/blender/data/scenes/",
+    "file:/home/dev/Documents/gramine/CI-Examples/blender/data/images/",
+]
+isvprodid = 0
+isvsvn = 0
+remote_attestation = "none"
+enable_stats = false
+use_exinfo = false
+
+[[sgx.trusted_files]]
+uri = "file:/home/dev/Documents/gramine/CI-Examples/blender/blender_dir/blender"
+
+[[sgx.trusted_files]]
+uri = "file:/home/dev/Documents/gramine/CI-Examples/blender/blender_dir/lib/"
+
+[[sgx.trusted_files]]
+uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/runtime/glibc/"
+
+[[sgx.trusted_files]]
+uri = "file:/lib/x86_64-linux-gnu/"
+
+[[sgx.trusted_files]]
+uri = "file:/usr//lib/x86_64-linux-gnu/"
+
+[[sgx.trusted_files]]
+uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/libsysdb.so"
+
+[sgx.cpu_features]
+avx = "unspecified"
+avx512 = "unspecified"
+amx = "unspecified"
+mpx = "disabled"
+pkru = "disabled"
+
+[sys.stack]
+size = "8M"
