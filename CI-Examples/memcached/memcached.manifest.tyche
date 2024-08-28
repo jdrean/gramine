@@ -1,0 +1,48 @@
+[libos]
+entrypoint = "/memcached"
+
+[loader]
+log_level = "error"
+uid = 1000
+gid = 1000
+
+[loader.env]
+LD_LIBRARY_PATH = "/lib:/usr//lib/x86_64-linux-gnu"
+
+[loader.entrypoint]
+uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/libsysdb.so"
+sha256 = "ed66fe85361c8dc5f83540f91fc5c1ba867e7e8c07a1fc6d81b598799e41b34b"
+
+[sys]
+enable_sigterm_injection = true
+
+[fs]
+mounts = [
+    { path = "/memcached", uri = "file:memcached" },
+    { path = "/lib", uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/runtime/glibc" },
+    { path = "/usr//lib/x86_64-linux-gnu", uri = "file:/usr//lib/x86_64-linux-gnu" },
+]
+
+[sgx]
+debug = true
+edmm_enable = false
+max_threads = 16
+enclave_size = "1024M"
+trusted_files = [
+    { uri = "file:memcached" },
+    { uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/runtime/glibc/" },
+    { uri = "file:/usr//lib/x86_64-linux-gnu/" },
+    { uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/libsysdb.so" },
+]
+isvprodid = 0
+isvsvn = 0
+remote_attestation = "none"
+enable_stats = false
+use_exinfo = false
+
+[sgx.cpu_features]
+avx = "unspecified"
+avx512 = "unspecified"
+amx = "unspecified"
+mpx = "disabled"
+pkru = "disabled"
