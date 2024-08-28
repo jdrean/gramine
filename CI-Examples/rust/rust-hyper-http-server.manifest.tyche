@@ -1,0 +1,44 @@
+[libos]
+entrypoint = "target/release/rust-hyper-http-server"
+
+[loader]
+log_level = "error"
+
+[loader.env]
+LD_LIBRARY_PATH = "/lib:/lib/x86_64-linux-gnu"
+MALLOC_ARENA_MAX = "1"
+RUST_BACKTRACE = "full"
+
+[loader.entrypoint]
+uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/libsysdb.so"
+sha256 = "ed66fe85361c8dc5f83540f91fc5c1ba867e7e8c07a1fc6d81b598799e41b34b"
+
+[fs]
+mounts = [
+    { path = "/lib", uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/runtime/glibc" },
+    { path = "/lib/x86_64-linux-gnu", uri = "file:/lib/x86_64-linux-gnu" },
+]
+
+[sgx]
+debug = true
+edmm_enable = false
+trusted_files = [
+    { uri = "file:target/release/rust-hyper-http-server" },
+    { uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/runtime/glibc/" },
+    { uri = "file:/lib/x86_64-linux-gnu/" },
+    { uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/libsysdb.so" },
+]
+max_threads = 8
+isvprodid = 0
+isvsvn = 0
+remote_attestation = "none"
+enable_stats = false
+enclave_size = "256M"
+use_exinfo = false
+
+[sgx.cpu_features]
+avx = "unspecified"
+avx512 = "unspecified"
+amx = "unspecified"
+mpx = "disabled"
+pkru = "disabled"
