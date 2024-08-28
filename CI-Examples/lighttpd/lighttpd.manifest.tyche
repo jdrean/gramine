@@ -1,0 +1,58 @@
+[libos]
+entrypoint = "/lighttpd/sbin/lighttpd"
+
+[loader]
+log_level = "error"
+argv = [
+    "lighttpd",
+    "-D",
+    "-m",
+    "/lighttpd/lib",
+    "-f",
+    "lighttpd.conf",
+]
+
+[loader.env]
+LD_LIBRARY_PATH = "/lib:/lib/x86_64-linux-gnu:/lighttpd/lib"
+
+[loader.entrypoint]
+uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/libsysdb.so"
+sha256 = "ed66fe85361c8dc5f83540f91fc5c1ba867e7e8c07a1fc6d81b598799e41b34b"
+
+[sys]
+enable_sigterm_injection = true
+
+[fs]
+mounts = [
+    { path = "/lib", uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/runtime/glibc" },
+    { path = "/lib/x86_64-linux-gnu", uri = "file:/lib/x86_64-linux-gnu" },
+    { path = "/lighttpd", uri = "file:/lighttpd" },
+    { type = "tmpfs", path = "/var/tmp" },
+]
+
+[sgx]
+debug = true
+edmm_enable = false
+enclave_size = "256M"
+max_threads = 4
+trusted_files = [
+    { uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/runtime/glibc/" },
+    { uri = "file:/lighttpd/" },
+    { uri = "file:/lib/x86_64-linux-gnu/" },
+    { uri = "file:lighttpd.conf" },
+    { uri = "file:lighttpd-generic.conf" },
+    { uri = "file:lighttpd-server.conf" },
+    { uri = "file:/gramine-install/lib/x86_64-linux-gnu/gramine/libsysdb.so" },
+]
+isvprodid = 0
+isvsvn = 0
+remote_attestation = "none"
+enable_stats = false
+use_exinfo = false
+
+[sgx.cpu_features]
+avx = "unspecified"
+avx512 = "unspecified"
+amx = "unspecified"
+mpx = "disabled"
+pkru = "disabled"
