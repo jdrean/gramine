@@ -250,7 +250,7 @@ int create_enclave(sgx_arch_secs_t* secs, sgx_arch_token_t* token, unsigned long
     /* add the page tables to the domain.*/
     if (backend_td_register_region(secs->domain,
         (usize) pts, secs->domain->mmaps.tail->size,
-        MEM_READ | MEM_WRITE | MEM_SUPER, CONFIDENTIAL) != SUCCESS) {
+        MEM_READ | MEM_WRITE | MEM_SUPER, gb_segment_type) != SUCCESS) {
       log_error("Unable to register the page table mmaps.");
       return -errno;
     }
@@ -344,7 +344,7 @@ int add_pages_to_enclave(sgx_arch_secs_t* secs, void* addr, void* user_addr, uns
                          const char* comment) {
     __UNUSED(secs); /* Used only under DCAP ifdefs */
     int ret;
-    segment_type_t tpe = CONFIDENTIAL;
+    segment_type_t tpe = gb_segment_type;
     memory_access_right_t access = MEM_SUPER;
     uint64_t pt_flags = 0;
     char p[4] = "---";

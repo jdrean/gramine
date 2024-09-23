@@ -15,8 +15,9 @@
 static void pin_and_run(struct pal_enclave* enclave, int core_id) {
     tyche_pin_to_core(core_id);
     int ret = SUCCESS;
+
     do {
-      ret = backend_td_vcpu_run(&(enclave->domain), core_id, 1 << 10);
+      ret = backend_td_vcpu_run(&(enclave->domain), core_id, 1 << gb_quantum);
       if (ret != SUCCESS) {
         log_error("Oupsy %d %d", errno, core_id);
         assert(0);

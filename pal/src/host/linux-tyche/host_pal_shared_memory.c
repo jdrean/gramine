@@ -28,6 +28,10 @@
 /* The shared state layout info.*/
 shmem_info_t* shinfo = NULL;
 
+segment_type_t gb_segment_type = CONFIDENTIAL;
+
+unsigned long gb_quantum = 10;
+
 
 static int init_shmem(shmem_buffer_t* buff, size_t nb_pages) {
   buff->bitmap = calloc((nb_pages +7)/8, sizeof(uint8_t));

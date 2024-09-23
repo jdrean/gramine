@@ -56,6 +56,8 @@ struct pal_enclave {
 #endif
     // TODO(aghosn): added by me for now.
     tyche_domain_t domain;
+    bool sandbox;
+    unsigned long quantum;
 };
 
 extern struct pal_enclave g_pal_enclave;

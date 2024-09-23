@@ -918,6 +918,23 @@ static int parse_loader_config(char* manifest, struct pal_enclave* enclave_info,
         goto out;
     }
 
+    // Check if we run sandboxes or enclaves.
+    ret = toml_bool_in(manifest_root, "sgx.sandbox", /*default value*/false,
+        &enclave_info->sandbox);
+    if (ret < 0) {
+      log_error("Cannot parse 'sgx.sandbox'");
+      goto out;
+    }
+    // Check the quantum.
+    int manifest_quantum = 0;
+    ret = toml_int_in(manifest_root, "sgx.quantum", /*default value*/10,
+         &manifest_quantum);
+    if (ret < 0 || manifest_quantum < 10 || manifest_quantum >= 63) {
+      log_error("Cannot parse 'sgx.quantum' or invalid value x < 10 || x >= 63");
+      goto out;
+    }
+    enclave_info->quantum = (unsigned long) (manifest_quantum);
+
     ret = 0;
 
 out:
@@ -956,6 +973,10 @@ static int load_enclave(struct pal_enclave* enclave, char* args, size_t args_siz
         return -EINVAL;
     }
     log_debug("Gramine parsed TOML manifest file successfully");
+
+    // set the values for the default type and quantum.
+    gb_segment_type = enclave->sandbox? SHARED : CONFIDENTIAL;
+    gb_quantum = enclave->quantum;
 
     if (!is_wrfsbase_supported())
         return -EPERM;

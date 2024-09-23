@@ -9,6 +9,12 @@ build-tyche:
 		echo "Missing/Incorrect TARGET"; \
 		exit 1 ; \
 	fi
+	if [ -e build-port ]; then \
+		ninja -C build-port/ uninstall; \
+		ninja -C build-port/ clean; \
+		sudo rm -rf build-port/ ; \
+		sudo rm -rf /gramine/ ; \
+	fi
 	meson setup build-port/ -Ddirect=enabled -Dtyche=enabled -Dtyche_drivers=$(TYCHE_ROOT)/linux/drivers/ \
 		-Dtyche_backend=tyche -Dtyche_sdk=$(TYCHE_ROOT)/C/libraries/sdktyche \
 		-Dtyche_pts=$(TYCHE_ROOT)/C/libraries/pts --bindir=$(TARGET) --prefix=$(TARGET)

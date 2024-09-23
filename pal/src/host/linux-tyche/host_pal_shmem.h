@@ -5,6 +5,7 @@
 
 #include "host_tyche_driver.h"
 #include "pal_linux_defs.h"
+#include "tyche_capabilities_types.h"
 
 #define USTACK_DEFAULT_SIZE (THREAD_STACK_SIZE / 4)
 
@@ -15,6 +16,10 @@ typedef struct shmem_buffer_t {
     char* next_free;
     uint8_t* bitmap;
 } shmem_buffer_t;
+
+extern segment_type_t gb_segment_type;
+
+extern unsigned long gb_quantum;
 
 /* Shared memory info layout*/
 typedef struct shmem_info_t {
