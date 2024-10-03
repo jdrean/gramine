@@ -1,0 +1,52 @@
+[libos]
+entrypoint = "/llama-cli"
+
+[loader]
+log_level = "error"
+insecure__use_cmdline_argv=true
+
+[loader.env]
+LD_LIBRARY_PATH = "/lib:/"
+
+[loader.entrypoint]
+uri = "file:/gramine/lib/x86_64-linux-gnu/gramine/libsysdb.so"
+sha256 = "ed66fe85361c8dc5f83540f91fc5c1ba867e7e8c07a1fc6d81b598799e41b34b"
+
+[fs]
+mounts = [
+    { path = "/lib", uri = "file:/gramine/lib/x86_64-linux-gnu/gramine/runtime/glibc" },
+    { path = "/libstdc++.so.6", uri="file:/lib/x86_64-linux-gnu/libstdc++.so.6"},
+    { path = "/libgcc_s.so.1", uri = "file:/lib/x86_64-linux-gnu/libgcc_s.so.1"},
+    { path= "/libgomp.so.1", uri = "file:/lib/x86_64-linux-gnu/libgomp.so.1" },
+    { path= "/llama-small.gguf", uri = "file:/models/llama-small.gguf"},
+    { path = "/llama-cli", uri = "file:llama-cli" },
+]
+
+[sgx]
+debug = true
+edmm_enable = false
+trusted_files = [
+    { uri = "file:llama-cli" },
+    { uri = "file:/gramine/lib/x86_64-linux-gnu/gramine/runtime/glibc/" },
+    { uri = "file:/lib/x86_64-linux-gnu/libstdc++.so.6"},
+    { uri = "file:/lib/x86_64-linux-gnu/libgcc_s.so.1"},
+    { uri = "file:/lib/x86_64-linux-gnu/libgomp.so.1"},
+    { uri = "file:/gramine/lib/x86_64-linux-gnu/gramine/libsysdb.so" },
+]
+allowed_files = [
+  "file:/models/llama-small.gguf",
+]
+max_threads = 4
+isvprodid = 0
+isvsvn = 0
+remote_attestation = "none"
+enable_stats = false
+enclave_size = "2G"
+use_exinfo = false
+
+[sgx.cpu_features]
+avx = "unspecified"
+avx512 = "unspecified"
+amx = "unspecified"
+mpx = "disabled"
+pkru = "disabled"
