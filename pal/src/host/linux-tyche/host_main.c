@@ -686,11 +686,12 @@ static int parse_loader_config(char* manifest, struct pal_enclave* enclave_info,
         goto out;
     }
 
-    if (!enclave_info->size || !IS_POWER_OF_2(enclave_info->size)) {
+    // Disable that check for tyche for the moment.
+    /*if (!enclave_info->size || !IS_POWER_OF_2(enclave_info->size)) {
         log_error("Enclave size not a power of two (an SGX-imposed requirement)");
         ret = -EINVAL;
         goto out;
-    }
+    }*/
 
     int64_t thread_num_int64;
     ret = toml_int_in(manifest_root, "sgx.max_threads", /*defaultval=*/-1, &thread_num_int64);

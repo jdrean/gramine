@@ -112,7 +112,7 @@ shmem_info_t* init_shinfo(tyche_domain_t* domain, size_t nb_threads, uint64_t ad
   shinfo->rpc_queue = (void*) (shinfo->raw_start + s_rpc_queue);
 
   /* Allocate space for the futexes. Put it directly after the rest*/
-  shinfo->futex_mmap.start = (char*) mmap((void*) (shinfo->raw_size + shinfo->raw_start),
+  shinfo->futex_mmap.start = (uintptr_t) mmap((void*) (shinfo->raw_size + shinfo->raw_start),
       FUTEX_MMAP_PAGES * PRESET_PAGESIZE, PROT_READ| PROT_WRITE,
       MAP_PRIVATE | MAP_FIXED_NOREPLACE | MAP_POPULATE | MAP_LOCKED | MAP_ANONYMOUS,
       -1, 0);
@@ -120,6 +120,14 @@ shmem_info_t* init_shinfo(tyche_domain_t* domain, size_t nb_threads, uint64_t ad
   if (shinfo->futex_mmap.start == ((void*) -1)) {
     log_error("Unable to map the futex mmap");
     return NULL;
+  }
+  if (!(shinfo->futex_mmap.start == (char*) (shinfo->raw_start + shinfo->raw_size))) {
+    log_error("Big allocation mmap bug: We expected %p, but got %p | errno %d | size %d\n",
+        shinfo->futex_mmap.start, 
+        (char*) (shinfo->raw_start + shinfo->raw_size), errno,
+        sizeof(shinfo->futex_mmap.start));
+    // TODO: this is a hack to get back on track.
+    shinfo->futex_mmap.start = (char*) (shinfo->raw_start + shinfo->raw_size);
   }
   assert(shinfo->futex_mmap.start == (char*) (shinfo->raw_start + shinfo->raw_size));
   shinfo->futex_mmap.size = FUTEX_MMAP_PAGES * PRESET_PAGESIZE;
@@ -185,6 +193,7 @@ static void* memory_mmap(shmem_buffer_t* buff, size_t size) {
     }
 
     if (contiguous_pages < pages_needed) {
+        log_error("Our mmap is too small!!!!\n");
         return NULL; // Not enough contiguous memory
     }
 
@@ -375,7 +384,7 @@ void tyche_pin_to_core(int core_id) {
 
   // Set the CPU affinity for the current process
   if (sched_setaffinity(tid, sizeof(mask), &mask) == -1) {
-      log_error("sched_setaffinity");
+      log_error("sched_setaffinity failed to pin to core %d", core_id);
       exit(-1);
   }
 }
