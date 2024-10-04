@@ -1,0 +1,42 @@
+[libos]
+entrypoint = "/speedtest1"
+
+[loader]
+log_level = "error"
+insecure__use_cmdline_argv=true
+
+[loader.env]
+LD_LIBRARY_PATH = "/lib"
+
+[loader.entrypoint]
+uri = "file:/gramine/lib/x86_64-linux-gnu/gramine/libsysdb.so"
+sha256 = "567d11430830ae1774977ba0ed1f6d1cec0a85e8db411f675c9f8e403978d000"
+
+[fs]
+mounts = [
+    { path = "/lib", uri = "file:/gramine/lib/x86_64-linux-gnu/gramine/runtime/glibc" },
+    { path = "/speedtest1", uri = "file:speedtest1" },
+]
+
+[sgx]
+debug = true
+edmm_enable = false
+trusted_files = [
+    { uri = "file:speedtest1" },
+    { uri = "file:/gramine/lib/x86_64-linux-gnu/gramine/runtime/glibc/" },
+    { uri = "file:/gramine/lib/x86_64-linux-gnu/gramine/libsysdb.so" },
+]
+max_threads = 4
+isvprodid = 0
+isvsvn = 0
+remote_attestation = "none"
+enable_stats = false
+enclave_size = "1G"
+use_exinfo = false
+
+[sgx.cpu_features]
+avx = "unspecified"
+avx512 = "unspecified"
+amx = "unspecified"
+mpx = "disabled"
+pkru = "disabled"
