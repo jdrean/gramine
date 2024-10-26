@@ -6,17 +6,22 @@
 libos.entrypoint = "/helloworld"
 loader.log_level = "{{ log_level }}"
 
-loader.env.LD_LIBRARY_PATH = "/lib"
+loader.env.LD_LIBRARY_PATH = "/lib:/lib/x86_64-linux-gnu"
 
 fs.mounts = [
   { path = "/lib", uri = "file:{{ gramine.runtimedir() }}" },
+  { path = "/lib/x86_64-linux-gnu/libstdc++.so.6", uri="file:/lib/x86_64-linux-gnu/libstdc++.so.6"},
+  { path = "/lib/x86_64-linux-gnu/libgcc_s.so.1", uri = "file:/lib/x86_64-linux-gnu/libgcc_s.so.1"},
   { path = "/helloworld", uri = "file:helloworld" },
 ]
 
 sgx.debug = true
 sgx.edmm_enable = {{ 'true' if env.get('EDMM', '0') == '1' else 'false' }}
+sgx.max_threads = {{ '1' if env.get('EDMM', '0') == '1' else '2' }}
 
 sgx.trusted_files = [
   "file:helloworld",
   "file:{{ gramine.runtimedir() }}/",
+  "file:/lib/x86_64-linux-gnu/libstdc++.so.6",
+  "file:/lib/x86_64-linux-gnu/libgcc_s.so.1",
 ]

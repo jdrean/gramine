@@ -18,7 +18,7 @@ all: helloworld.manifest.sgx helloworld.sig
 endif
 
 helloworld:
-	g++ -o helloworld hellowrold.cpp
+	g++ -o helloworld helloworld.cpp
 
 
 helloworld.manifest: helloworld.manifest.template

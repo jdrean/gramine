@@ -20,3 +20,4 @@ sgx.trusted_files = [
   "file:helloworld",
   "file:{{ gramine.runtimedir() }}/",
 ]
+sgx.max_threads = 2

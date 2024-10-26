@@ -1,12 +1,12 @@
 # Copyright (C) 2023 Gramine contributors
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Redis manifest file example
+# SEAL manifest file example
 
 ################################## GRAMINE ####################################
 
 # Entrypoint binary which Gramine invokes.
-libos.entrypoint = "/redis-server"
+libos.entrypoint = "/sealexamples"
 
 # Verbosity of Gramine debug log (none/error/warning/debug/trace/all). Note
 # that GRAMINE_LOG_LEVEL macro is expanded in the Makefile as part of the
@@ -17,7 +17,7 @@ loader.log_level = "{{ log_level }}"
 ################################# ARGUMENTS ###################################
 
 # Hardcode application arguments. See README for explanations.
-loader.argv = ["redis-server", "--save", ""]
+loader.argv = ["sealexamples"]
 
 ################################# ENV VARS ####################################
 
@@ -25,14 +25,14 @@ loader.argv = ["redis-server", "--save", ""]
 # applies. Paths must be in-Gramine visible paths, not host paths (i.e.,
 # paths must be taken from fs.mounts[...].path, not fs.mounts[...].uri).
 #
-# In case of Redis:
+# In case of SEAL:
 # - /lib is searched for Glibc libraries (ld, libc, libpthread)
-loader.env.LD_LIBRARY_PATH = "/lib"
+loader.env.LD_LIBRARY_PATH = "/lib:/"
 
 ################################## SIGNALS ####################################
 
 # Allow for injecting SIGTERM signal from the host. Without this option,
-# pressing `Ctrl + C` wouldn't terminate Redis.
+# pressing `Ctrl + C` wouldn't terminate SEAL.
 sys.enable_sigterm_injection = true
 
 ################################# MOUNT FS ####################################
@@ -50,9 +50,12 @@ fs.mounts = [
   # in-Gramine visible directory /lib (in 'path').
   { path = "/lib", uri = "file:{{ gramine.runtimedir() }}" },
 
-  # Mount redis-server executable (located in the current directory) under the
+  { path = "/libstdc++.so.6", uri="file:/lib/x86_64-linux-gnu/libstdc++.so.6"},
+  { path = "/libgcc_s.so.1", uri = "file:/lib/x86_64-linux-gnu/libgcc_s.so.1"},
+
+  # Mount sealexamples executable (located in the current directory) under the
   # in-Gramine visible root directory.
-  { path = "/redis-server", uri = "file:redis-server" },
+  { path = "/sealexamples", uri = "file:sealexamples" },
 ]
 
 ############################### SGX: GENERAL ##################################
@@ -63,10 +66,10 @@ fs.mounts = [
 sgx.debug = true
 
 # Set enclave size (somewhat arbitrarily) to 1024MB. Recall that SGX v1 requires
-# to specify enclave size at enclave creation time. If Redis exhausts these
+# to specify enclave size at enclave creation time. If SEAL exhausts these
 # 1024MB then it will start failing with random errors. Greater enclave sizes
 # result in longer startup times, smaller enclave sizes are not enough for
-# typical Redis workloads.
+# typical SEAL workloads.
 sgx.enclave_size = "1024M"
 
 # Enable Enclave Dynamic Memory Management (EDMM) feature based on EDMM
@@ -85,14 +88,14 @@ sgx.edmm_enable = {{ 'true' if env.get('EDMM', '0') == '1' else 'false' }}
 # demands.
 #
 # Note that internally Gramine may spawn two additional threads, one for IPC
-# and one for asynchronous events/alarms. Redis is technically single-threaded
+# and one for asynchronous events/alarms. SEAL is technically single-threaded
 # but spawns couple additional threads to do background bookkeeping. Therefore,
-# specifying '8' allows to run a maximum of 6 Redis threads which is enough.
+# specifying '8' allows to run a maximum of 6 SEAL threads which is enough.
 sgx.max_threads = {{ '1' if env.get('EDMM', '0') == '1' else '2' }}
 
 ############################# SGX: TRUSTED FILES ###############################
 
-# Specify all files used by Redis and its dependencies (including all libraries
+# Specify all files used by SEAL and its dependencies (including all libraries
 # which can be loaded at runtime via dlopen), as well as other static read-only
 # files (like configuration files).
 #
@@ -111,6 +114,8 @@ sgx.max_threads = {{ '1' if env.get('EDMM', '0') == '1' else '2' }}
 # If hashes match, this file is trusted and allowed to be loaded and used. Note
 # that this happens on the deployment machine.
 sgx.trusted_files = [
-  "file:redis-server",
+  "file:sealexamples",
   "file:{{ gramine.runtimedir() }}/",
+  "file:/lib/x86_64-linux-gnu/libstdc++.so.6",
+  "file:/lib/x86_64-linux-gnu/libgcc_s.so.1",
 ]
