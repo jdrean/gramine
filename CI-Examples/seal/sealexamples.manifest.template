@@ -91,7 +91,8 @@ sgx.edmm_enable = {{ 'true' if env.get('EDMM', '0') == '1' else 'false' }}
 # and one for asynchronous events/alarms. SEAL is technically single-threaded
 # but spawns couple additional threads to do background bookkeeping. Therefore,
 # specifying '8' allows to run a maximum of 6 SEAL threads which is enough.
-sgx.max_threads = {{ '1' if env.get('EDMM', '0') == '1' else '2' }}
+#sgx.max_threads = {{ '1' if env.get('EDMM', '0') == '1' else '2' }}
+sgx.max_threads = 4
 
 ############################# SGX: TRUSTED FILES ###############################
 

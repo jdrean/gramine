@@ -61,18 +61,17 @@ sealexamples.manifest: sealexamples.manifest.template
 sealexamples.sig sealexamples.manifest.sgx: sgx_outputs
 	@:
 
+sealexamples: ~/SEAL/build/bin/sealexamples
+	cp $< $@
+
 .INTERMEDIATE: sgx_outputs
-sgx_outputs: sealexamples.manifest $(SRCDIR)/src/sealexamples
+sgx_outputs: sealexamples.manifest sealexamples
 	gramine-sgx-sign \
 		--manifest sealexamples.manifest \
 		--output sealexamples.manifest.sgx
 
 
 ############################## RUNNING TESTS ##################################
-
-.PHONY: start-native-server
-start-native-server: all
-	./sealexamples --save '' --protected-mode no
 
 ifeq ($(SGX),)
 GRAMINE = gramine-direct
@@ -81,9 +80,11 @@ GRAMINE = gramine-sgx
 endif
 
 # Note that command-line arguments are hardcoded in the manifest file.
-.PHONY: start-gramine-server
-start-gramine-server: all
+.PHONY: run_enclave
+run_enclave: all
+	@echo "Starting enclave measurement at $$(date +%s.%N)..."
 	$(GRAMINE) sealexamples
+	@echo "Enclave started at $$(date +%s.%N)"
 
 ################################## CLEANUP ####################################
 
