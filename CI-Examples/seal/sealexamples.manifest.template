@@ -63,7 +63,7 @@ fs.mounts = [
 # Create a debug SGX enclave (with SIGSTRUCT.ATTRIBUTES.DEBUG bit set to 1).
 # This allows to debug Gramine with the application using GDB, read perf
 # counters and enable SGX statistics. Note that this option is *insecure*!
-sgx.debug = true
+sgx.debug = false
 
 # Set enclave size (somewhat arbitrarily) to 1024MB. Recall that SGX v1 requires
 # to specify enclave size at enclave creation time. If SEAL exhausts these

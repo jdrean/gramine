@@ -84,7 +84,7 @@ endif
 run_enclave: all
 	@echo "Starting enclave measurement at $$(date +%s.%N)..."
 	$(GRAMINE) sealexamples
-	@echo "Enclave started at $$(date +%s.%N)"
+	@echo "Enclave Finished at $$(date +%s.%N)"
 
 ################################## CLEANUP ####################################
 
