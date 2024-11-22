@@ -35,6 +35,19 @@ attestation: $(SOURCES)
 		--manifest $< \
 		--output $@
 
+ifeq ($(SGX),)
+GRAMINE = gramine-direct
+else
+GRAMINE = gramine-sgx
+endif
+
+# Note that command-line arguments are hardcoded in the manifest file.
+.PHONY: run_enclave
+run_enclave: all
+	@echo "Starting enclave measurement at $$(date +%s.%N)..."
+	$(GRAMINE) attestation
+	@echo "Enclave Finished at $$(date +%s.%N)"
+
 .PHONY: clean
 clean:
 	$(RM) attestation *.manifest *.manifest.sgx *.sig *.token *.o

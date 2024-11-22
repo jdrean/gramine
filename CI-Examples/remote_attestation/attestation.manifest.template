@@ -5,6 +5,7 @@ loader.env.LD_LIBRARY_PATH = "/lib:/lib/x86_64-linux-gnu"
 fs.mounts = [
   { path = "/lib", uri = "file:{{ gramine.runtimedir() }}" },
   { path = "/attestation", uri = "file:attestation" },
+  { path = "/libmbedcrypto.so.7", uri = "file:/lib/x86_64-linux-gnu/libmbedcrypto.so.7"},
 ]
 
 sgx.debug = true
@@ -17,4 +18,5 @@ sgx.ra_client_linkable = {{ 'true' if env.get('RA_CLIENT_LINKABLE', '0') == '1' 
 sgx.trusted_files = [
   "file:{{ gramine.runtimedir() }}/",
   "file:attestation",
+  "file:/lib/x86_64-linux-gnu/libmbedcrypto.so.7",
 ]
