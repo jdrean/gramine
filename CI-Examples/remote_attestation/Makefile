@@ -4,24 +4,20 @@ all: attestation
 
 # Compiler settings
 CC ?= gcc
-CFLAGS = -Wall -Wextra -g
+CFLAGS = -Wall -Wextra
 
-# Gramine paths - adjust these according to your Gramine installation
-GRAMINE_DIR ?= /usr/local
-GRAMINE_PKGCONFIG = $(GRAMINE_DIR)/lib/pkgconfig
-GRAMINE_LIBDIR = $(GRAMINE_DIR)/lib/gramine
-GRAMINE_INCLUDE = $(GRAMINE_DIR)/include
+# You'll need to adjust this path to where your Gramine source is
+GRAMINE_SRC ?= ../../
 
-# Include paths
-CFLAGS += -I$(GRAMINE_INCLUDE)
-CFLAGS += -I$(GRAMINE_INCLUDE)/arch/x86_64/linux-sgx
+CFLAGS += -I$(GRAMINE_SRC)/pal/src/host/linux-sgx
 
-# Libraries
+SOURCES = attestation.c $(GRAMINE_SRC)/pal/src/host/linux-sgx/enclave_api.S
+
 LDFLAGS = -pthread
 LIBS = -lmbedtls -lmbedcrypto -lmbedx509
 
-attestation: attestation.c
-	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS) $(LIBS)
+attestation: $(SOURCES)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 # Generate the manifest files
 %.manifest: %.manifest.template
