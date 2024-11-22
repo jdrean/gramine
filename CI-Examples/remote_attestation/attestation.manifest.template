@@ -1,6 +1,6 @@
 libos.entrypoint = "/attestation"
 
-loader.env.LD_LIBRARY_PATH = "/lib:/lib/x86_64-linux-gnu"
+loader.env.LD_LIBRARY_PATH = "/lib:/lib/x86_64-linux-gnu:/"
 
 fs.mounts = [
   { path = "/lib", uri = "file:{{ gramine.runtimedir() }}" },
