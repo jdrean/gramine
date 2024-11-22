@@ -11,7 +11,7 @@ GRAMINE_SRC ?= ../../
 
 CFLAGS += -I$(GRAMINE_SRC)/pal/src/host/linux-sgx
 
-SOURCES = attestation.c $(GRAMINE_SRC)/pal/src/host/linux-sgx/enclave_api.S
+SOURCES = attestation.c $(GRAMINE_SRC)/pal/src/host/linux-sgx/enclave_api.S rw_file.c
 
 LDFLAGS = -pthread
 LIBS = -lmbedtls -lmbedcrypto -lmbedx509
