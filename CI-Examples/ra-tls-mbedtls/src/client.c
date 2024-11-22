@@ -165,9 +165,9 @@ int main(int argc, char** argv) {
     mbedtls_x509_crt_init(&cacert);
     mbedtls_entropy_init(&entropy);
 
-    if (argc < 2 ||
-            (strcmp(argv[1], "native") && strcmp(argv[1], "epid") && strcmp(argv[1], "dcap"))) {
-        mbedtls_printf("USAGE: %s native|epid|dcap [SGX measurements]\n", argv[0]);
+    if (argc < 2 || (strcmp(argv[1], "native") && strcmp(argv[1], "epid") &&
+                strcmp(argv[1], "dcap") && strcmp(argv[1], "maa"))) {
+        mbedtls_printf("USAGE: %s native|epid|dcap|maa [SGX measurements]\n", argv[0]);
         return 1;
     }
 
@@ -209,6 +209,13 @@ int main(int argc, char** argv) {
                 mbedtls_printf("User requested RA-TLS verification with DCAP but cannot find lib\n");
                 return 1;
             }
+        }
+    } else if (!strcmp(argv[1], "maa")) {
+        ra_tls_verify_lib = dlopen("libra_tls_verify_maa.so", RTLD_LAZY);
+        if (!ra_tls_verify_lib) {
+            mbedtls_printf("%s\n", dlerror());
+            mbedtls_printf("User requested RA-TLS verification with MAA but cannot find lib\n");
+            return 1;
         }
     }
 

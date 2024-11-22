@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <x86intrin.h>
 
 #define mbedtls_fprintf fprintf
 #define mbedtls_printf printf
@@ -70,6 +71,18 @@ static ssize_t file_read(const char* path, char* buf, size_t count) {
         return -errno;
 
     return bytes;
+}
+
+
+unsigned int aux;
+unsigned long long time_start;
+unsigned long long time_end;
+
+#define NUM_REPEATS 1
+
+void print_time(const char *func_name, unsigned long long elapsed_time) {
+	printf("[CYCLES TOTAL] %s\t%16llu cycles\n", func_name, elapsed_time);
+	printf("[CYCLES] %s\t%16.0f cycles\n", func_name, (double)elapsed_time / NUM_REPEATS);
 }
 
 int main(int argc, char** argv) {
@@ -157,7 +170,19 @@ int main(int argc, char** argv) {
         size_t der_key_size;
         size_t der_crt_size;
 
-        ret = (*ra_tls_create_key_and_crt_der_f)(&der_key, &der_key_size, &der_crt, &der_crt_size);
+	unsigned long long elapsed_time = 0;
+
+	for(int i=0; i < NUM_REPEATS; i++) {
+		time_start = __rdtscp(&aux);
+		
+		ret = (*ra_tls_create_key_and_crt_der_f)(&der_key, &der_key_size, &der_crt, &der_crt_size);
+		
+		time_end = __rdtscp(&aux);
+
+		elapsed_time += time_end - time_start;
+	}
+
+	print_time("SGX get quote", elapsed_time);
         if (ret != 0) {
             mbedtls_printf(" failed\n  !  ra_tls_create_key_and_crt_der returned %d\n\n", ret);
             goto exit;
