@@ -1,14 +1,11 @@
-libos.entrypoint = "{{ entrypoint }}"
+libos.entrypoint = "/attestation"
 
-loader.env.LD_LIBRARY_PATH = "/lib"
-loader.insecure__use_cmdline_argv = true
+loader.env.LD_LIBRARY_PATH = "/lib:/lib/x86_64-linux-gnu"
 
 fs.mounts = [
-  { path = "/lib", uri = "file:{{ gramine.runtimedir(libc) }}" },
-  { path = "/{{ entrypoint }}", uri = "file:{{ binary_dir }}/{{ entrypoint }}" },
+  { path = "/lib", uri = "file:{{ gramine.runtimedir() }}" },
+  { path = "/attestation", uri = "file:attestation" },
 ]
-
-fs.insecure__keys.default = "ffeeddccbbaa99887766554433221100"
 
 sgx.debug = true
 sgx.edmm_enable = {{ 'true' if env.get('EDMM', '0') == '1' else 'false' }}
@@ -18,6 +15,6 @@ sgx.ra_client_spid = "{{ env.get('RA_CLIENT_SPID', '') }}"
 sgx.ra_client_linkable = {{ 'true' if env.get('RA_CLIENT_LINKABLE', '0') == '1' else 'false' }}
 
 sgx.trusted_files = [
-  "file:{{ gramine.runtimedir(libc) }}/",
-  "file:{{ binary_dir }}/{{ entrypoint }}",
+  "file:{{ gramine.runtimedir() }}/",
+  "file:attestation",
 ]

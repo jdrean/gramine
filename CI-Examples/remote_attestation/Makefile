@@ -1,6 +1,9 @@
 # Set the default target
 .PHONY: all
-all: attestation
+all: attestation attestation.manifest
+ifeq ($(SGX),1)
+all: attestation attestation.manifest.sgx attestation.sig
+endif
 
 # Compiler settings
 CC ?= gcc
